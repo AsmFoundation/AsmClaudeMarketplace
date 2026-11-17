@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <!-- Assumed AsmFoundation.Sdk 0.1.0 property names (unverified, check against the SDK docs). -->
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <Freestanding>true</Freestanding>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Consumed by version from the local feed (packages/), not via ProjectReference. -->
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <!-- Static library: bin/Debug/libcrc.a, which freestanding executables can link. -->
+    <OutputType>StaticLibrary</OutputType>
+    <AsmLibraryName>crc</AsmLibraryName>
+
+    <!-- dotnet pack Crc/Crc.asmproj -o packages  produces  packages/Acme.Crc.1.2.0.nupkg -->
+    <PackageId>Acme.Crc</PackageId>
+    <Version>1.2.0</Version>
+    <Authors>Acme</Authors>
+    <Description>Bit-by-bit CRC-32 step for x86-64 assembly (NASM). Referencing projects get include/crc.inc on their include path and libcrc.a on their link line.</Description>
+  </PropertyGroup>
+
+  <!-- Nothing else is needed:
+       - crc.asm is assembled (**/*.asm), and include/crc.inc is a dependency (**/*.inc).
+       - include/** is packed into the package's include/ folder (it must be in include/, or nothing is packed).
+       - The generated build props of the package add that folder and libcrc.a to every asm project that references it. -->
+
+</Project>

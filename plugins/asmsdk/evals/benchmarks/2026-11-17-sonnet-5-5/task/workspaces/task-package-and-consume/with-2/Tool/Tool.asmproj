@@ -1,0 +1,17 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <!-- Executable: bin/Debug/Tool, statically linked, entry point _start. -->
+    <OutputType>Exe</OutputType>
+    <!-- Freestanding (the default, stated for clarity): no libc, only raw system calls. -->
+    <AsmRuntime>Freestanding</AsmRuntime>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Consumed from the NuGet feed in nuget.config (packages/), by version, not through a ProjectReference.
+         Run  dotnet pack Crc/Crc.asmproj -o packages  first, or restore cannot find it.
+         The package's build props add its include/ folder to the NASM include path and libcrc.a to the link line. -->
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

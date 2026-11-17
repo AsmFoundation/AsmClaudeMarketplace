@@ -1,0 +1,1 @@
+Local NuGet feed. Fill it with: dotnet pack Crc/Crc.asmproj -o packages

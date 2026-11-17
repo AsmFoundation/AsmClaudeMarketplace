@@ -1,0 +1,18 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <!-- Static library: bin/Debug/libcrc.a, packed as native/linux-x64/libcrc.a -->
+    <OutputType>StaticLibrary</OutputType>
+    <AsmLibraryName>crc</AsmLibraryName>
+
+    <!-- dotnet pack Crc/Crc.asmproj -o packages  writes packages/Acme.Crc.1.2.0.nupkg -->
+    <PackageId>Acme.Crc</PackageId>
+    <Version>1.2.0</Version>
+    <Authors>Acme</Authors>
+    <Description>Bit-by-bit CRC-32 step (crc_step) in x86-64 assembly for NASM projects.</Description>
+  </PropertyGroup>
+
+  <!-- Public include files live in include/ (include/crc.inc). dotnet pack ships that folder, and
+       asm projects that reference the package get it on their NASM include path automatically. -->
+
+</Project>

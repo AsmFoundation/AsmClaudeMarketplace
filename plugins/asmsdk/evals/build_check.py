@@ -8,9 +8,10 @@ Linux. This script does that for both arms (with and without the plugin) of each
 from a `claude plugin eval --keep-temp --json` result.
 
 Safety: the workspaces were written by an agent. Each one is copied into a fresh folder before
-building, and a project that defines its own MSBuild targets or Exec tasks is not built (none
-of the tasks needs one), so no agent-written command runs. Outputs run inside a throw-away
-Linux container (docker), never on the host.
+building, and a project that uses Exec, inline or external task code, downloads or deletes is
+not built (none of the tasks needs one), so no agent-written command runs; targets that only
+add items or copy files are built. Outputs run inside a throw-away Linux container (docker),
+never on the host.
 
 Usage:
     build_check.py --result task.json --feed <folder with AsmFoundation.*.nupkg>
@@ -37,8 +38,11 @@ ASMPROJ_TYPE_GUID = "13B669BE-BB05-4DDF-9536-439F39A36129"
 #: Container image used to run the Linux outputs; it has glibc 2.39 and the .NET 10 runtime.
 RUNTIME_IMAGE = "mcr.microsoft.com/dotnet/runtime:10.0"
 
-#: Elements that would let a project run arbitrary commands during the build.
-UNSAFE_MSBUILD = re.compile(r"<\s*(Target|Exec|UsingTask)\b", re.IGNORECASE)
+#: Elements that would let a project run commands, load task code, download, or delete
+#: outside the build's own outputs. A <Target> that only adds items or copies files is
+#: allowed: agents without the skill often write one to copy the .so by hand, and refusing
+#: those would hide how their projects actually fare.
+UNSAFE_MSBUILD = re.compile(r"<\s*(Exec|UsingTask|DownloadFile|Delete|RemoveDir)\b|TaskFactory", re.IGNORECASE)
 
 
 def run(cmd: List[str], cwd: str, env: Dict[str, str], timeout: int = 600) -> Tuple[int, str]:
@@ -101,16 +105,18 @@ def ensure_feed(workspace: str, feed: str) -> None:
         return
     with open(config, encoding="utf-8-sig") as f:
         text = f.read()
-    # After <clear /> when present, so the clear does not remove the eval feed again.
+    # After <clear /> when present, so the clear does not remove the eval feed again. The
+    # replacements are functions, not template strings: the feed is a Windows path, and its
+    # backslashes would otherwise be read as regex escapes (\U...).
     if re.search(r"<packageSources>\s*<clear\s*/>", text):
-        text = re.sub(r"(<packageSources>\s*<clear\s*/>)", r"\1\n    " + source, text, count=1)
+        text = re.sub(r"(<packageSources>\s*<clear\s*/>)", lambda m: m.group(1) + "\n    " + source, text, count=1)
     elif "<packageSources>" in text:
         text = text.replace("<packageSources>", "<packageSources>\n    " + source, 1)
     else:
         text = text.replace("<configuration>", f"<configuration>\n  <packageSources>\n    {source}\n  </packageSources>", 1)
     if "<packageSourceMapping>" in text:
         mapping = '<packageSource key="asmsdk-eval-feed"><package pattern="AsmFoundation.*" /></packageSource>'
-        text = re.sub(r"(<packageSourceMapping>(\s*<clear\s*/>)?)", r"\1\n    " + mapping, text, count=1)
+        text = re.sub(r"(<packageSourceMapping>(\s*<clear\s*/>)?)", lambda m: m.group(1) + "\n    " + mapping, text, count=1)
     with open(config, "w", encoding="utf-8") as f:
         f.write(text)
 
@@ -133,7 +139,7 @@ def ensure_global_json(workspace: str) -> bool:
 
 
 def unsafe_projects(workspace: str) -> List[str]:
-    """List agent-written MSBuild files that define targets or tasks (not built, see module doc).
+    """List agent-written MSBuild files that could run commands or delete files (not built, see module doc).
 
     Args:
         workspace: The copied workspace.

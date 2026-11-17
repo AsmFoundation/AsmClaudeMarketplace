@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Calc.Native/Calc.Native.asmproj" />
+  <Project Path="Calc.App/Calc.App.csproj" />
+</Solution>

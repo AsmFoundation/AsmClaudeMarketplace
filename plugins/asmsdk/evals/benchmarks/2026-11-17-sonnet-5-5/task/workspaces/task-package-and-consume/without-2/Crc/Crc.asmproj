@@ -1,0 +1,26 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <!-- Assumed AsmFoundation.Sdk 0.1.0 property names (unverified, check against the SDK docs). -->
+    <OutputType>StaticLibrary</OutputType>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+
+    <!-- NuGet identity: dotnet pack produces Acme.Crc.1.2.0.nupkg -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Acme.Crc</PackageId>
+    <Version>1.2.0</Version>
+    <PackageVersion>1.2.0</PackageVersion>
+    <Authors>Acme</Authors>
+    <Description>Bit-by-bit CRC-32 step (crc_step) for x86-64 NASM, with its public include file.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Public include file, shipped as include/crc.inc -->
+    <None Include="crc.inc" Pack="true" PackagePath="include/" />
+
+    <!-- NuGet auto-imports build/{PackageId}.targets into every referencing project,
+         so the packed file name must be exactly Acme.Crc.targets. -->
+    <None Include="package/Acme.Crc.targets" Pack="true" PackagePath="build/" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,1695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eval report — asmsdk v0.1.0</title>
+</head>
+<body>
+<style>
+:root{--plane:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;--ink-3:#6b6a64;--hairline:rgba(11,11,11,.10);--grid:#e1e0d9;--inset:rgba(11,11,11,.04);--accent:#2a78d6;--base-fill:#6b6a64;--delta-good:#006300;--good:#067d06;--warning:#8a6100;--critical:#d03b3b;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{--plane:#0d0d0d;--surface:#1a1a19;--ink:#ffffff;--ink-2:#c3c2b7;--ink-3:#898781;--hairline:rgba(255,255,255,.10);--grid:#2c2c2a;--inset:rgba(255,255,255,.05);--accent:#3987e5;--base-fill:#898781;--delta-good:#0ca30c;--good:#0ca30c;--warning:#fab219;--critical:#e06c6c;color-scheme:dark}}
+:root[data-theme="dark"]{--plane:#0d0d0d;--surface:#1a1a19;--ink:#ffffff;--ink-2:#c3c2b7;--ink-3:#898781;--hairline:rgba(255,255,255,.10);--grid:#2c2c2a;--inset:rgba(255,255,255,.05);--accent:#3987e5;--base-fill:#898781;--delta-good:#0ca30c;--good:#0ca30c;--warning:#fab219;--critical:#e06c6c;color-scheme:dark}
+:root[data-theme="light"]{--plane:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;--ink-3:#6b6a64;--hairline:rgba(11,11,11,.10);--grid:#e1e0d9;--inset:rgba(11,11,11,.04);--accent:#2a78d6;--base-fill:#6b6a64;--delta-good:#006300;--good:#067d06;--warning:#8a6100;--critical:#d03b3b;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-text-size-adjust:100%}
+.wrap{max-width:880px;margin:0 auto;padding:40px 24px 64px;display:flex;flex-direction:column;gap:20px}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+header h1{margin:2px 0 0;font-size:24px;font-weight:600;line-height:1.25;text-wrap:balance}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;color:var(--ink-2);font-size:13px}
+.meta .num{font-variant-numeric:tabular-nums lining-nums}
+.banner{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;
+  border:1px solid var(--hairline);background:var(--surface);font-size:13px}
+.banner .chip-warn{color:var(--warning);font-weight:600}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:4px}
+.tile .label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.tile .value{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums lining-nums;line-height:1.1}
+.tile.hero .value{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:48px}
+.tile .sub{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.tile .value.delta-pos{color:var(--delta-good)}
+.tile .value.delta-neg{color:var(--critical)}
+.toolbar{display:flex;gap:8px;justify-content:flex-end}
+.toolbar button{font:12px system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--hairline);border-radius:6px;padding:4px 10px;cursor:pointer}
+.toolbar button:hover{color:var(--ink)}
+.toolbar button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.case{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:18px 20px;
+  display:flex;flex-direction:column;gap:10px}
+.case-regressed{border-left:3px solid var(--critical)}
+.verdict{margin:6px 0 0;font-size:15px}
+.verdict .delta{font-size:15px}
+.flag{font-size:11px;font-weight:600;color:var(--warning);white-space:nowrap}
+.star{color:var(--warning);font-size:.45em;vertical-align:super;line-height:0;cursor:help}
+.legend summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2)}
+.legend-list{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--ink-2)}
+.case-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.case-head h2{margin:0;font-size:16px;font-weight:600}
+.case-head .spacer{flex:1}
+.case-score{font-size:15px;font-weight:600}
+.mono{font:12px "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+.num{font-variant-numeric:tabular-nums lining-nums}
+.muted{color:var(--ink-3);font-size:12px}
+.meter{display:inline-block;position:relative;width:120px;height:6px;border-radius:4px;background:var(--grid);
+  vertical-align:middle}
+.meter>span{display:block;height:100%;border-radius:4px;max-width:100%}
+.meter .tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink-3);border-radius:1px}
+.m-accent>span{background:var(--accent)}
+.m-base>span{background:var(--base-fill)}
+.delta{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.delta-pos{color:var(--delta-good)}
+.delta-neg{color:var(--critical)}
+.delta-zero{color:var(--ink-3)}
+details.section{border-top:1px solid var(--grid);padding-top:10px}
+details.section>summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--ink-2);list-style-position:outside;margin-left:2px}
+details.section>summary:hover{color:var(--ink)}
+details.section[open]>summary{margin-bottom:8px}
+.md{display:flex;flex-direction:column;gap:8px;background:var(--inset);border-radius:8px;
+  padding:12px 14px;overflow-wrap:break-word}
+.md>:first-child{margin-top:0}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin:4px 0 0;font-size:1em;font-weight:600;line-height:1.3}
+.md p,.md ul,.md ol,.md blockquote,.md table,.md pre,.md hr{margin:0}
+.md ul,.md ol{display:flex;flex-direction:column;gap:4px;padding-left:20px}
+.md blockquote{border-left:2px solid var(--hairline);padding-left:10px;color:var(--ink-2)}
+.md :not(pre)>code{background:var(--inset);padding:1px 4px;border-radius:4px;
+  font:.92em "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+.md pre{background:var(--inset);border:1px solid var(--hairline);padding:10px 12px;border-radius:6px;
+  overflow-x:auto;font:12px/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+.md pre code{background:none;padding:0;font:inherit}
+.md table{width:100%;border-collapse:collapse}
+.md th,.md td{padding:5px 8px;text-align:left;vertical-align:top;border-bottom:1px solid var(--grid)}
+.md th{font-weight:600;color:var(--ink-2)}
+.md a{color:var(--accent);text-decoration:none}
+.md a:hover{text-decoration:underline}
+.grader-def{display:flex;flex-direction:column;gap:6px;padding:8px 0}
+.grader-def+.grader-def{border-top:1px solid var(--grid)}
+.grader-def-head{display:flex;align-items:baseline;gap:8px}
+.grader-name{font:13px "SF Mono",ui-monospace,Menlo,Consolas,monospace;font-weight:600}
+.badge{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);
+  border:1px solid var(--hairline);border-radius:999px;padding:1px 8px}
+.config{display:flex;flex-direction:column;gap:2px;background:var(--inset);border-radius:8px;padding:10px 14px}
+.config code{font:12px "SF Mono",ui-monospace,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+.arm{display:flex;flex-direction:column;gap:8px;padding:6px 0}
+.arm+.arm{border-top:1px dashed var(--grid);margin-top:4px;padding-top:12px}
+.arm-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.arm-label{font-size:13px;font-weight:600}
+.run{border:1px solid var(--grid);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.run-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.run-title{font-size:12px;font-weight:600;color:var(--ink-2)}
+.run-error .explanation{color:var(--ink-2)}
+.note{font-size:12px;color:var(--ink-2)}
+.graders{display:flex;flex-direction:column;gap:4px}
+details.grader{border-radius:6px}
+details.grader>summary{cursor:pointer;display:flex;align-items:baseline;gap:8px;padding:3px 4px;
+  border-radius:6px;list-style:none}
+details.grader>summary::-webkit-details-marker{display:none}
+details.grader>summary::before{content:'▸';font-size:10px;color:var(--ink-3);flex:none;
+  transition:transform .12s ease}
+details.grader[open]>summary::before{transform:rotate(90deg)}
+details.grader>summary:hover{background:var(--inset)}
+details.grader>summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.grader-body{padding:6px 8px 8px 24px;display:flex;flex-direction:column;gap:6px}
+.chip{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.chip-pass{color:var(--good);border:1px solid currentColor}
+.chip-fail{color:var(--critical);border:1px solid currentColor}
+.chip.chip-warn{color:var(--warning);border:1px solid currentColor}
+.explanation{margin:0;font-size:13px;color:var(--ink-2);white-space:pre-wrap;overflow-wrap:break-word}
+.kv{display:flex;gap:8px;font-size:12px;color:var(--ink-3)}
+.votes{font-variant-numeric:tabular-nums;letter-spacing:.1em}
+pre.evidence{margin:0;background:var(--inset);border:1px solid var(--hairline);border-radius:6px;
+  padding:8px 10px;overflow-x:auto;max-height:320px;
+  font:12px/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:break-word}
+footer{color:var(--ink-3);font-size:12px;text-align:center;padding-top:8px}
+@media (prefers-reduced-motion:no-preference){
+  details.grader>summary,.toolbar button{transition:background .12s ease,color .12s ease}
+}
+@media (prefers-reduced-motion:reduce){
+  details.grader>summary::before{transition:none}
+}
+@media print{
+  :root,:root[data-theme="dark"],:root[data-theme="light"]{--plane:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;--ink-3:#6b6a64;--hairline:rgba(11,11,11,.10);--grid:#e1e0d9;--inset:rgba(11,11,11,.04);--accent:#2a78d6;--base-fill:#6b6a64;--delta-good:#006300;--good:#067d06;--warning:#8a6100;--critical:#d03b3b;color-scheme:light}
+  body{background:#fff}
+  .toolbar{display:none}
+  .case,.run,.grader-def{break-inside:avoid}
+  pre.evidence{max-height:none}
+}
+</style>
+<div class="wrap">
+<header>
+<div class="eyebrow">Plugin eval report</div>
+<h1>asmsdk v0.1.0</h1>
+<p class="verdict">Plugin effect: <span class="delta delta-pos">↑ +22.2 pts</span> vs baseline — improved 3 · flat 1 · regressed 0 of 4 cases.</p>
+<div class="meta">
+<span class="mono">.</span>
+<span>Claude Code v2.1.322</span>
+<span class="num">2026-11-17 20:08 UTC</span>
+<span class="num">36m 59s</span>
+<span class="num">$19.31</span>
+<span class="num">24 runs</span>
+<span class="num">4 in flight</span>
+
+<span>model claude-sonnet-5-5</span>
+<span>judge default</span>
+<span class="num">threshold 100%</span>
+<span>filtered: --tag task</span>
+</div>
+</header>
+
+<section class="tiles">
+<div class="tile hero"><span class="label">Suite score · with plugin</span><span class="value">99%</span><span class="sub">mean of per-case scores</span></div>
+<div class="tile"><span class="label">Ablation Δ</span><span class="value num delta-pos">↑ +22.2</span><span class="sub">score points vs baseline, 4 of 4 cases</span></div>
+<div class="tile"><span class="label">Baseline score</span><span class="value num">76.8%</span><span class="sub">without the plugin</span></div>
+<div class="tile"><span class="label">Cases</span><span class="value num">4</span><span class="sub">3 of 4 ≥ 100% threshold</span></div>
+<div class="tile"><span class="label">Perfect runs</span><span class="value num">91.7%</span><span class="sub">runs where every grader passed</span></div>
+</section>
+<details class="section legend">
+<summary>How to read this report</summary>
+<ul class="legend-list">
+<li>A run's score is the weighted fraction of its graders that passed; a "perfect" run passed every grader.</li>
+<li>A case's score is the mean of its runs; a case passes when its score is at or above the 100% threshold (the tick on each case bar).</li>
+<li>The suite score is the mean of the per-case scores.</li>
+<li>Judge votes are independent samples of the LLM judge; the majority decides pass or fail.</li>
+<li>"With plugin" and "Baseline" runs are identical except for the plugin being loaded; Δ is the with-plugin score minus the baseline score.</li>
+
+</ul>
+</details>
+<div class="toolbar"><button type="button" data-act="expand">Expand all</button><button type="button" data-act="collapse">Collapse all</button></div>
+<article class="case" id="case-1">
+<div class="case-head">
+<h2>task-defines-keep-debug</h2>
+<span class="muted mono">evals\task\task-defines-keep-debug</span>
+<span class="spacer"></span>
+
+<span class="delta delta-pos">↑ +33.3 pts</span>
+<span class="muted">with plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span><i class="tick" style="left:100.0%"></i></span>
+<span class="num case-score">100%</span>
+</div>
+
+<details class="section" open>
+<summary>Results</summary>
+<section class="arm">
+<div class="arm-head">
+<span class="arm-label">With plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">100% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">5 turns · $0.11 · 20:08:11 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">defines-use-avx2</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched USE_AVX2</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">keeps-debug-defined</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmDefine\s+Include=&quot;USE_AVX2(=1)?&quot;|&lt;AsmDefineConstants[^&gt;]*&gt;[^&lt;]*\bDEBUG\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-name-kept</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmLibraryName&gt;\s*fast\s*&lt;/AsmLibraryName&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">4 turns · $0.09 · 20:08:11 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">defines-use-avx2</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched USE_AVX2</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">keeps-debug-defined</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmDefine\s+Include=&quot;USE_AVX2(=1)?&quot;|&lt;AsmDefineConstants[^&gt;]*&gt;[^&lt;]*\bDEBUG\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-name-kept</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmLibraryName&gt;\s*fast\s*&lt;/AsmLibraryName&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">6 turns · $0.12 · 20:08:11 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">defines-use-avx2</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched USE_AVX2</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">keeps-debug-defined</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmDefine\s+Include=&quot;USE_AVX2(=1)?&quot;|&lt;AsmDefineConstants[^&gt;]*&gt;[^&lt;]*\bDEBUG\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-name-kept</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmLibraryName&gt;\s*fast\s*&lt;/AsmLibraryName&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details></div>
+</div>
+</section><section class="arm">
+<div class="arm-head">
+<span class="arm-label">Baseline (no plugin)</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:66.7%"></span></span>
+<span class="num">66.7%</span>
+<span class="muted num">0% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:66.7%"></span></span>
+<span class="num">66.7%</span>
+<span class="muted num">5 turns · $0.33 · 20:08:11 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">defines-use-avx2</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched USE_AVX2</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">keeps-debug-defined</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Fast/Fast.asmproj</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-name-kept</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmLibraryName&gt;\s*fast\s*&lt;/AsmLibraryName&gt;</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:66.7%"></span></span>
+<span class="num">66.7%</span>
+<span class="muted num">4 turns · $0.30 · 20:08:32 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">defines-use-avx2</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched USE_AVX2</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">keeps-debug-defined</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Fast/Fast.asmproj</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-name-kept</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmLibraryName&gt;\s*fast\s*&lt;/AsmLibraryName&gt;</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:66.7%"></span></span>
+<span class="num">66.7%</span>
+<span class="muted num">5 turns · $0.37 · 20:08:34 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">defines-use-avx2</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched USE_AVX2</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">keeps-debug-defined</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Fast/Fast.asmproj</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-name-kept</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;AsmLibraryName&gt;\s*fast\s*&lt;/AsmLibraryName&gt;</p>
+
+</div>
+</details></div>
+</div>
+</section>
+</details>
+<details class="section" open>
+<summary>Prompt</summary>
+<div class="md"><p>Our asm library project <code>Fast/Fast.asmproj</code> (AsmFoundation.Sdk 0.1.0) currently reads:</p>
+<pre><code class="language-xml">&lt;Project Sdk=&quot;AsmFoundation.Sdk&quot;&gt;
+  &lt;PropertyGroup&gt;
+    &lt;AsmLibraryName&gt;fast&lt;/AsmLibraryName&gt;
+  &lt;/PropertyGroup&gt;
+&lt;/Project&gt;
+</code></pre>
+<p>and <code>Fast/fast.asm</code> uses <code>%ifdef DEBUG</code> blocks for extra checks in Debug builds. I need every build (Debug and Release) to also define the NASM symbol <code>USE_AVX2=1</code>, without changing anything else about how Debug and Release builds behave today. The project is not checked out here: write the complete updated project file to <code>Fast/Fast.asmproj</code> in the current directory. You cannot run commands. Keep explanations short.</p>
+</div>
+</details>
+<details class="section" open>
+<summary>Graders — what "good" means for this case</summary>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">defines-use-avx2</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Fast/Fast.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;USE_AVX2&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">keeps-debug-defined</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Fast/Fast.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;AsmDefine\\s+Include=\&quot;USE_AVX2(=1)?\&quot;|&lt;AsmDefineConstants[^&gt;]*&gt;[^&lt;]*\\bDEBUG\\b&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">library-name-kept</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Fast/Fast.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;AsmLibraryName&gt;\\s*fast\\s*&lt;/AsmLibraryName&gt;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">skill-fired</span><span class="badge">tool_used</span></div>
+<div class="config"><div class="kv"><span>tool</span><code>&quot;Skill&quot;</code></div><div class="kv"><span>input_match</span><code>&quot;\&quot;skill\&quot;\\s*:\\s*\&quot;(?:[\\w-]+:)?asmsdk\&quot;&quot;</code></div></div>
+</div>
+</details>
+</article>
+<article class="case" id="case-2">
+<div class="case-head">
+<h2>task-dotnet-interop</h2>
+<span class="muted mono">evals\task\task-dotnet-interop</span>
+<span class="spacer"></span>
+
+<span class="delta delta-pos">↑ +42.9 pts</span>
+<span class="muted">with plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span><i class="tick" style="left:100.0%"></i></span>
+<span class="num case-score">100%</span>
+</div>
+
+<details class="section" open>
+<summary>Results</summary>
+<section class="arm">
+<div class="arm-head">
+<span class="arm-label">With plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">100% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">20 turns · $1.03 · 20:08:38 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asm-exports-calc-sum</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+\$?calc_sum\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asmproj-uses-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Sdk=&quot;AsmFoundation\.Sdk(/0\.1\.0)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">csproj-references-asmproj</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;ProjectReference\s+Include=&quot;[^&quot;]*Calc\.Native\.asmproj&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">global-json-pins-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &quot;msbuild-sdks&quot;\s*:\s*\{[^}]*&quot;AsmFoundation\.Sdk&quot;\s*:\s*&quot;0\.1\.0&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-named-calc</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(AsmLibraryName|AssemblyName)&gt;\s*calc\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">pinvoke-library-name</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched (LibraryImport|DllImport)\s*\(\s*&quot;(lib)?calc(\.so)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">slnx-asmproj-type-guid</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Calc\.Native\.asmproj[^&gt;]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^&gt;]*Calc\.Native\.asmproj</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">19 turns · $0.77 · 20:10:57 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asm-exports-calc-sum</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+\$?calc_sum\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asmproj-uses-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Sdk=&quot;AsmFoundation\.Sdk(/0\.1\.0)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">csproj-references-asmproj</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;ProjectReference\s+Include=&quot;[^&quot;]*Calc\.Native\.asmproj&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">global-json-pins-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &quot;msbuild-sdks&quot;\s*:\s*\{[^}]*&quot;AsmFoundation\.Sdk&quot;\s*:\s*&quot;0\.1\.0&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-named-calc</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(AsmLibraryName|AssemblyName)&gt;\s*calc\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">pinvoke-library-name</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched (LibraryImport|DllImport)\s*\(\s*&quot;(lib)?calc(\.so)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">slnx-asmproj-type-guid</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Calc\.Native\.asmproj[^&gt;]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^&gt;]*Calc\.Native\.asmproj</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">25 turns · $1.10 · 20:11:03 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asm-exports-calc-sum</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+\$?calc_sum\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asmproj-uses-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Sdk=&quot;AsmFoundation\.Sdk(/0\.1\.0)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">csproj-references-asmproj</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;ProjectReference\s+Include=&quot;[^&quot;]*Calc\.Native\.asmproj&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">global-json-pins-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &quot;msbuild-sdks&quot;\s*:\s*\{[^}]*&quot;AsmFoundation\.Sdk&quot;\s*:\s*&quot;0\.1\.0&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">library-named-calc</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(AsmLibraryName|AssemblyName)&gt;\s*calc\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">pinvoke-library-name</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched (LibraryImport|DllImport)\s*\(\s*&quot;(lib)?calc(\.so)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">slnx-asmproj-type-guid</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Calc\.Native\.asmproj[^&gt;]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^&gt;]*Calc\.Native\.asmproj</p>
+
+</div>
+</details></div>
+</div>
+</section><section class="arm">
+<div class="arm-head">
+<span class="arm-label">Baseline (no plugin)</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:57.1%"></span></span>
+<span class="num">57.1%</span>
+<span class="muted num">0% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:57.1%"></span></span>
+<span class="num">57.1%</span>
+<span class="muted num">10 turns · $1.19 · 20:11:34 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asm-exports-calc-sum</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+\$?calc_sum\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asmproj-uses-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Sdk=&quot;AsmFoundation\.Sdk(/0\.1\.0)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">csproj-references-asmproj</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;ProjectReference\s+Include=&quot;[^&quot;]*Calc\.Native\.asmproj&quot;</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">global-json-pins-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">grader threw: case &quot;task-dotnet-interop&quot; grader focus file &quot;global.json&quot;: path &quot;global.json&quot; does not exist</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">library-named-calc</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Calc.Native/Calc.Native.asmproj</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">pinvoke-library-name</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched (LibraryImport|DllImport)\s*\(\s*&quot;(lib)?calc(\.so)?&quot;</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">slnx-asmproj-type-guid</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Calc.slnx</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:57.1%"></span></span>
+<span class="num">57.1%</span>
+<span class="muted num">9 turns · $1.45 · 20:14:20 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asm-exports-calc-sum</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+\$?calc_sum\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asmproj-uses-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Sdk=&quot;AsmFoundation\.Sdk(/0\.1\.0)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">csproj-references-asmproj</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;ProjectReference\s+Include=&quot;[^&quot;]*Calc\.Native\.asmproj&quot;</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">global-json-pins-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">grader threw: case &quot;task-dotnet-interop&quot; grader focus file &quot;global.json&quot;: path &quot;global.json&quot; does not exist</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">library-named-calc</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Calc.Native/Calc.Native.asmproj</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">pinvoke-library-name</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched (LibraryImport|DllImport)\s*\(\s*&quot;(lib)?calc(\.so)?&quot;</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">slnx-asmproj-type-guid</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Calc.slnx</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:57.1%"></span></span>
+<span class="num">57.1%</span>
+<span class="muted num">14 turns · $1.61 · 20:15:13 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asm-exports-calc-sum</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+\$?calc_sum\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">asmproj-uses-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched Sdk=&quot;AsmFoundation\.Sdk(/0\.1\.0)?&quot;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">csproj-references-asmproj</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;ProjectReference\s+Include=&quot;[^&quot;]*Calc\.Native\.asmproj&quot;</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">global-json-pins-sdk</span>  </summary>
+<div class="grader-body">
+<p class="explanation">grader threw: case &quot;task-dotnet-interop&quot; grader focus file &quot;global.json&quot;: path &quot;global.json&quot; does not exist</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">library-named-calc</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Calc.Native/Calc.Native.asmproj</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">pinvoke-library-name</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched (LibraryImport|DllImport)\s*\(\s*&quot;(lib)?calc(\.so)?&quot;</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">slnx-asmproj-type-guid</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern not found in file Calc.slnx</p>
+
+</div>
+</details></div>
+</div>
+</section>
+</details>
+<details class="section" open>
+<summary>Prompt</summary>
+<div class="md"><p>Create a new solution in the current directory, from scratch, with exactly these projects:</p>
+<ul>
+<li><code>Calc.slnx</code>: the solution, listing both projects.</li>
+<li><code>Calc.Native/Calc.Native.asmproj</code>: an x86-64 assembly shared library built with AsmFoundation.Sdk 0.1.0 (NASM syntax). Its source <code>Calc.Native/calc.asm</code> exports <code>int64_t calc_sum(const int64_t *values, int64_t count)</code>. The library file must be named <code>libcalc.so</code>.</li>
+<li><code>Calc.App/Calc.App.csproj</code>: a .NET 10 console app whose <code>Calc.App/Program.cs</code> calls calc_sum through P/Invoke on the array {1, 2, 3, 4} and prints the result.</li>
+</ul>
+<p><code>dotnet build Calc.slnx</code> must work on a Windows, Linux or macOS machine that has only the .NET 10 SDK. Write every file that is needed to disk, in the current directory. You cannot run commands. Keep explanations short.</p>
+</div>
+</details>
+<details class="section" open>
+<summary>Graders — what "good" means for this case</summary>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">asm-exports-calc-sum</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Calc.Native/calc.asm&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;global\\s+\\$?calc_sum\\b&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">asmproj-uses-sdk</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Calc.Native/Calc.Native.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;Sdk=\&quot;AsmFoundation\\.Sdk(/0\\.1\\.0)?\&quot;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">csproj-references-asmproj</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Calc.App/Calc.App.csproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;ProjectReference\\s+Include=\&quot;[^\&quot;]*Calc\\.Native\\.asmproj\&quot;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">global-json-pins-sdk</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;global.json&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;\&quot;msbuild-sdks\&quot;\\s*:\\s*\\{[^}]*\&quot;AsmFoundation\\.Sdk\&quot;\\s*:\\s*\&quot;0\\.1\\.0\&quot;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">library-named-calc</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Calc.Native/Calc.Native.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;(AsmLibraryName|AssemblyName)&gt;\\s*calc\\s*&lt;/&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">pinvoke-library-name</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Calc.App/Program.cs&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;(LibraryImport|DllImport)\\s*\\(\\s*\&quot;(lib)?calc(\\.so)?\&quot;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">skill-fired</span><span class="badge">tool_used</span></div>
+<div class="config"><div class="kv"><span>tool</span><code>&quot;Skill&quot;</code></div><div class="kv"><span>input_match</span><code>&quot;\&quot;skill\&quot;\\s*:\\s*\&quot;(?:[\\w-]+:)?asmsdk\&quot;&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">slnx-asmproj-type-guid</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Calc.slnx&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;Calc\\.Native\\.asmproj[^&gt;]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^&gt;]*Calc\\.Native\\.asmproj&quot;</code></div><div class="kv"><span>flags</span><code>&quot;i&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+</details>
+</article>
+<article class="case" id="case-3">
+<div class="case-head">
+<h2>task-fix-pic-link-errors</h2>
+<span class="muted mono">evals\task\task-fix-pic-link-errors</span>
+<span class="spacer"></span>
+
+<span class="delta delta-zero">· 0.0 pts</span>
+<span class="muted">with plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span><i class="tick" style="left:100.0%"></i></span>
+<span class="num case-score">100%</span>
+</div>
+
+<details class="section" open>
+<summary>Results</summary>
+<section class="arm">
+<div class="arm-head">
+<span class="arm-label">With plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">100% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">8 turns · $0.35 · 20:16:51 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">hash64-still-exported</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash64\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">mix64-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+mix64\s*:\s*function\s+hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">seed-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash_seed\s*:\s*data\s+hidden\b|global\s+hash_seed\s*:\s*hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">7 turns · $0.46 · 20:19:00 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">hash64-still-exported</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash64\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">mix64-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+mix64\s*:\s*function\s+hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">seed-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash_seed\s*:\s*data\s+hidden\b|global\s+hash_seed\s*:\s*hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">8 turns · $0.52 · 20:20:58 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">hash64-still-exported</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash64\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">mix64-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+mix64\s*:\s*function\s+hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">seed-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash_seed\s*:\s*data\s+hidden\b|global\s+hash_seed\s*:\s*hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details></div>
+</div>
+</section><section class="arm">
+<div class="arm-head">
+<span class="arm-label">Baseline (no plugin)</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">100% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">5 turns · $0.86 · 20:22:19 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">hash64-still-exported</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash64\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">mix64-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+mix64\s*:\s*function\s+hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">seed-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash_seed\s*:\s*data\s+hidden\b|global\s+hash_seed\s*:\s*hidden\b</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">4 turns · $0.69 · 20:24:28 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">hash64-still-exported</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash64\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">mix64-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+mix64\s*:\s*function\s+hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">seed-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash_seed\s*:\s*data\s+hidden\b|global\s+hash_seed\s*:\s*hidden\b</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">4 turns · $0.53 · 20:25:32 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">hash64-still-exported</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash64\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">mix64-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+mix64\s*:\s*function\s+hidden\b</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">seed-hidden</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched global\s+hash_seed\s*:\s*data\s+hidden\b|global\s+hash_seed\s*:\s*hidden\b</p>
+
+</div>
+</details></div>
+</div>
+</section>
+</details>
+<details class="section" open>
+<summary>Prompt</summary>
+<div class="md"><p><code>dotnet build</code> of our shared library project <code>Hash/Hash.asmproj</code> (AsmFoundation.Sdk 0.1.0, default settings, builds libHash.so) fails at link time:</p>
+<pre><code>lld : error : relocation R_X86_64_PC32 cannot be used against symbol &#39;mix64&#39;; recompile with -fPIC
+lld : error : relocation R_X86_64_PC32 cannot be used against symbol &#39;hash_seed&#39;; recompile with -fPIC
+</code></pre>
+<p>The two sources are <code>Hash/hash.asm</code>:</p>
+<pre><code class="language-nasm">default rel
+extern mix64, hash_seed
+section .text
+global hash64:function
+hash64:                 ; uint64_t hash64(uint64_t x)
+    mov rax, [rel hash_seed]
+    xor rdi, rax
+    call mix64
+    ret
+section .note.GNU-stack noalloc noexec nowrite progbits
+</code></pre>
+<p>and <code>Hash/mix.asm</code>:</p>
+<pre><code class="language-nasm">default rel
+section .data
+global hash_seed:data 8
+hash_seed: dq 0x9E3779B97F4A7C15
+section .text
+global mix64:function
+mix64:                  ; uint64_t mix64(uint64_t x)
+    mov rax, rdi
+    shr rax, 33
+    xor rax, rdi
+    ret
+section .note.GNU-stack noalloc noexec nowrite progbits
+</code></pre>
+<p>Only <code>hash64</code> is meant to be the library's public API. Fix the code. The sources are not checked out here: write both corrected files to <code>Hash/hash.asm</code> and <code>Hash/mix.asm</code> in the current directory. You cannot run commands. Keep explanations short.</p>
+</div>
+</details>
+<details class="section" open>
+<summary>Graders — what "good" means for this case</summary>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">hash64-still-exported</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Hash/hash.asm&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;global\\s+hash64\\b&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">mix64-hidden</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Hash/mix.asm&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;global\\s+mix64\\s*:\\s*function\\s+hidden\\b&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">seed-hidden</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Hash/mix.asm&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">skill-fired</span><span class="badge">tool_used</span></div>
+<div class="config"><div class="kv"><span>tool</span><code>&quot;Skill&quot;</code></div><div class="kv"><span>input_match</span><code>&quot;\&quot;skill\&quot;\\s*:\\s*\&quot;(?:[\\w-]+:)?asmsdk\&quot;&quot;</code></div></div>
+</div>
+</details>
+</article>
+<article class="case" id="case-4">
+<div class="case-head">
+<h2>task-package-and-consume</h2>
+<span class="muted mono">evals\task\task-package-and-consume</span>
+<span class="spacer"></span>
+
+<span class="delta delta-pos">↑ +12.5 pts</span>
+<span class="muted">with plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:95.8%"></span><i class="tick" style="left:100.0%"></i></span>
+<span class="num case-score">95.8%</span>
+</div>
+
+<details class="section" open>
+<summary>Results</summary>
+<section class="arm">
+<div class="arm-head">
+<span class="arm-label">With plugin</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:95.8%"></span></span>
+<span class="num">95.8%</span>
+<span class="muted num">66.7% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">22 turns · $1.18 · 20:27:59 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">include-file-in-include-folder</span>  </summary>
+<div class="grader-body">
+<p class="explanation">Crc/include/crc.inc exists as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">local-feed</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched packages</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">no-project-reference</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern absent as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-id</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageId&gt;\s*Acme\.Crc\s*&lt;/PackageId&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-reference-by-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageReference\s+Include=&quot;Acme\.Crc&quot;\s+Version=&quot;\[?1\.2\.0</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(Package)?Version&gt;\s*1\.2\.0\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">static-library</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*StaticLibrary\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\s*true\s*&lt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">tool-is-exe</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*Exe\s*&lt;/</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:87.5%"></span></span>
+<span class="num">87.5%</span>
+<span class="muted num">22 turns · $1.22 · 20:29:16 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">include-file-in-include-folder</span>  </summary>
+<div class="grader-body">
+<p class="explanation">Crc/include/crc.inc exists as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">local-feed</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched packages</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">no-project-reference</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern found (expected absent)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-id</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageId&gt;\s*Acme\.Crc\s*&lt;/PackageId&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-reference-by-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageReference\s+Include=&quot;Acme\.Crc&quot;\s+Version=&quot;\[?1\.2\.0</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(Package)?Version&gt;\s*1\.2\.0\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">static-library</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*StaticLibrary\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\s*true\s*&lt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">tool-is-exe</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*Exe\s*&lt;/</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-accent" aria-hidden="true"><span style="width:100.0%"></span></span>
+<span class="num">100%</span>
+<span class="muted num">28 turns · $1.32 · 20:29:48 UTC</span>
+</div>
+
+<div class="graders"><details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">include-file-in-include-folder</span>  </summary>
+<div class="grader-body">
+<p class="explanation">Crc/include/crc.inc exists as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">local-feed</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched packages</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">no-project-reference</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern absent as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-id</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageId&gt;\s*Acme\.Crc\s*&lt;/PackageId&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-reference-by-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageReference\s+Include=&quot;Acme\.Crc&quot;\s+Version=&quot;\[?1\.2\.0</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(Package)?Version&gt;\s*1\.2\.0\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">skill-fired</span>  <span class="badge">plugin-fired indicator</span></summary>
+<div class="grader-body">
+<p class="explanation">Skill called 1x (expected 1..∞)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">static-library</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*StaticLibrary\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\s*true\s*&lt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">tool-is-exe</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*Exe\s*&lt;/</p>
+
+</div>
+</details></div>
+</div>
+</section><section class="arm">
+<div class="arm-head">
+<span class="arm-label">Baseline (no plugin)</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:83.3%"></span></span>
+<span class="num">83.3%</span>
+<span class="muted num">0% of runs perfect</span>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 1</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:87.5%"></span></span>
+<span class="num">87.5%</span>
+<span class="muted num">11 turns · $1.37 · 20:30:05 UTC</span>
+</div>
+
+<div class="graders"><details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">include-file-in-include-folder</span>  </summary>
+<div class="grader-body">
+<p class="explanation">Crc/include/crc.inc missing (expected present)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">local-feed</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched packages</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">no-project-reference</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern absent as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-id</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageId&gt;\s*Acme\.Crc\s*&lt;/PackageId&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-reference-by-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageReference\s+Include=&quot;Acme\.Crc&quot;\s+Version=&quot;\[?1\.2\.0</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(Package)?Version&gt;\s*1\.2\.0\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">static-library</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*StaticLibrary\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\s*true\s*&lt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">tool-is-exe</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*Exe\s*&lt;/</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 2</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:75.0%"></span></span>
+<span class="num">75%</span>
+<span class="muted num">12 turns · $1.21 · 20:34:21 UTC</span>
+</div>
+
+<div class="graders"><details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">include-file-in-include-folder</span>  </summary>
+<div class="grader-body">
+<p class="explanation">Crc/include/crc.inc missing (expected present)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">local-feed</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched packages</p>
+
+</div>
+</details>
+<details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">no-project-reference</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern found (expected absent)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-id</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageId&gt;\s*Acme\.Crc\s*&lt;/PackageId&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-reference-by-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageReference\s+Include=&quot;Acme\.Crc&quot;\s+Version=&quot;\[?1\.2\.0</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(Package)?Version&gt;\s*1\.2\.0\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">static-library</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*StaticLibrary\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\s*true\s*&lt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">tool-is-exe</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*Exe\s*&lt;/</p>
+
+</div>
+</details></div>
+</div>
+<div class="run">
+<div class="run-head">
+<span class="run-title">Run 3</span>
+<span class="meter m-base" aria-hidden="true"><span style="width:87.5%"></span></span>
+<span class="num">87.5%</span>
+<span class="muted num">11 turns · $1.14 · 20:35:58 UTC</span>
+</div>
+
+<div class="graders"><details class="grader" open>
+<summary><span class="chip chip-fail">✗ fail</span> <span class="grader-name">include-file-in-include-folder</span>  </summary>
+<div class="grader-body">
+<p class="explanation">Crc/include/crc.inc missing (expected present)</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">local-feed</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched packages</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">no-project-reference</span>  </summary>
+<div class="grader-body">
+<p class="explanation">pattern absent as expected</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-id</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageId&gt;\s*Acme\.Crc\s*&lt;/PackageId&gt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-reference-by-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;PackageReference\s+Include=&quot;Acme\.Crc&quot;\s+Version=&quot;\[?1\.2\.0</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">package-version</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;(Package)?Version&gt;\s*1\.2\.0\s*&lt;/</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">static-library</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*StaticLibrary\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\s*true\s*&lt;</p>
+
+</div>
+</details>
+<details class="grader">
+<summary><span class="chip chip-pass">✓ pass</span> <span class="grader-name">tool-is-exe</span>  </summary>
+<div class="grader-body">
+<p class="explanation">matched &lt;OutputType&gt;\s*Exe\s*&lt;/</p>
+
+</div>
+</details></div>
+</div>
+</section>
+</details>
+<details class="section" open>
+<summary>Prompt</summary>
+<div class="md"><p>Create from scratch, in the current directory, two x86-64 assembly projects built with AsmFoundation.Sdk 0.1.0 (NASM):</p>
+<ol>
+<li><code>Crc/Crc.asmproj</code>: a static library whose source <code>Crc/crc.asm</code> exports <code>uint32_t crc_step(uint32_t crc, uint32_t byte)</code> (any simple bit-by-bit CRC-32 step is fine). Its public include file <code>crc.inc</code> declares the function (extern) and <code>CRC_SEED equ 0xFFFFFFFF</code>. <code>dotnet pack</code> must produce the NuGet package <code>Acme.Crc</code> version 1.2.0, and asm projects that reference that package must get crc.inc on their include path automatically.</li>
+<li><code>Tool/Tool.asmproj</code>: a freestanding Linux executable (no libc) whose <code>Tool/main.asm</code> includes crc.inc, calls crc_step(CRC_SEED, 0x61) and exits with status 0. It must consume Acme.Crc as a NuGet package by version (a PackageReference), not through a project reference.</li>
+</ol>
+<p>Packages are restored from a local folder feed <code>packages/</code> in the current directory (filled by <code>dotnet pack Crc/Crc.asmproj -o packages</code>) plus nuget.org. Write every file that is needed to disk, in the current directory. You cannot run commands. Keep explanations short.</p>
+</div>
+</details>
+<details class="section" open>
+<summary>Graders — what "good" means for this case</summary>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">include-file-in-include-folder</span><span class="badge">file_exists</span></div>
+<div class="config"><div class="kv"><span>path</span><code>&quot;Crc/include/crc.inc&quot;</code></div><div class="kv"><span>exists</span><code>true</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">local-feed</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;nuget.config&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;packages&quot;</code></div><div class="kv"><span>flags</span><code>&quot;i&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">no-project-reference</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Tool/Tool.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;ProjectReference&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;not_contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">package-id</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Crc/Crc.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;PackageId&gt;\\s*Acme\\.Crc\\s*&lt;/PackageId&gt;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">package-reference-by-version</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Tool/Tool.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;PackageReference\\s+Include=\&quot;Acme\\.Crc\&quot;\\s+Version=\&quot;\\[?1\\.2\\.0&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">package-version</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Crc/Crc.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;(Package)?Version&gt;\\s*1\\.2\\.0\\s*&lt;/&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">skill-fired</span><span class="badge">tool_used</span></div>
+<div class="config"><div class="kv"><span>tool</span><code>&quot;Skill&quot;</code></div><div class="kv"><span>input_match</span><code>&quot;\&quot;skill\&quot;\\s*:\\s*\&quot;(?:[\\w-]+:)?asmsdk\&quot;&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">static-library</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Crc/Crc.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;OutputType&gt;\\s*StaticLibrary\\s*&lt;/|&lt;AsmProduceStaticLibrary&gt;\\s*true\\s*&lt;&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">tool-is-exe</span><span class="badge">regex</span></div>
+<div class="config"><div class="kv"><span>target</span><code>{&quot;source&quot;:&quot;file&quot;,&quot;path&quot;:&quot;Tool/Tool.asmproj&quot;}</code></div><div class="kv"><span>pattern</span><code>&quot;&lt;OutputType&gt;\\s*Exe\\s*&lt;/&quot;</code></div><div class="kv"><span>flags</span><code>&quot;&quot;</code></div><div class="kv"><span>match</span><code>&quot;contains&quot;</code></div></div>
+</div>
+</details>
+</article>
+<footer>Generated by <code>claude plugin eval</code> · schema v1 · scores are not comparable across different suites</footer>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+  var bar=document.querySelector('.toolbar');
+  if(!bar)return;
+  bar.addEventListener('click',function(e){
+    var b=e.target&&e.target.closest('button');
+    if(!b)return;
+    var open=b.dataset.act==='expand';
+    document.querySelectorAll('details.section, details.grader').forEach(function(d){d.open=open});
+  });
+});
+// Collapsed details vanish from print/PDF; these pages are share artifacts.
+window.addEventListener('beforeprint',function(){
+  document.querySelectorAll('details').forEach(function(d){
+    if(!d.open){d.dataset.printOpened='1';d.open=true}
+  });
+});
+window.addEventListener('afterprint',function(){
+  document.querySelectorAll('details[data-print-opened]').forEach(function(d){
+    d.open=false;delete d.dataset.printOpened;
+  });
+});
+</script>
+</body>
+</html>

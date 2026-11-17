@@ -1,0 +1,8 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <AsmLibraryName>fast</AsmLibraryName>
+  </PropertyGroup>
+  <ItemGroup>
+    <AsmDefine Include="USE_AVX2=1" />
+  </ItemGroup>
+</Project>

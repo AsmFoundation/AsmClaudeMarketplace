@@ -1,0 +1,6 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <!-- Without this the file would be named after the project: libCalc.Native.so -->
+    <AsmLibraryName>calc</AsmLibraryName>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <!-- ASSUMED SDK properties: names/values not verified against AsmFoundation.Sdk 0.1.0. -->
+    <OutputType>StaticLibrary</OutputType>
+    <TargetOS>Linux</TargetOS>
+
+    <!-- NuGet identity: dotnet pack Crc/Crc.asmproj -o packages  produces  packages/Acme.Crc.1.2.0.nupkg -->
+    <PackageId>Acme.Crc</PackageId>
+    <Version>1.2.0</Version>
+    <PackageVersion>1.2.0</PackageVersion>
+    <Authors>Acme</Authors>
+    <Description>Bit-by-bit CRC-32 step function (crc_step) for x86-64 NASM projects.</Description>
+  </PropertyGroup>
+
+  <!-- Extra package content (the built library itself is packed by the SDK):
+         include/crc.inc       the public include file
+         build/Acme.Crc.props  imported by NuGet into every project that references Acme.Crc;
+                               it puts include/ on the assembler include path -->
+  <ItemGroup>
+    <None Include="crc.inc" Pack="true" PackagePath="include/" />
+    <None Include="build/Acme.Crc.props" Pack="true" PackagePath="build/" />
+  </ItemGroup>
+
+</Project>

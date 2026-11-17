@@ -1,0 +1,2 @@
+# Local NuGet folder feed (see ../nuget.config). dotnet pack Crc/Crc.asmproj -o packages fills it.
+# The folder must exist before the first restore: a missing local source can fail restore (NU1301).

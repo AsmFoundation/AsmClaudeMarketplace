@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ships as build/Acme.Crc.props. NuGet imports build/{PackageId}.props automatically into every
+     project that references the package, so consumers get include/crc.inc on their include path. -->
+<Project>
+  <PropertyGroup>
+    <!-- ASSUMED: AsmIncludeDirectories is the SDK's semicolon-separated list of NASM include dirs
+         (not verified against AsmFoundation.Sdk 0.1.0). NormalizeDirectory returns an absolute
+         path with a trailing slash, which NASM's -I option requires. -->
+    <AsmIncludeDirectories>$(AsmIncludeDirectories);$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'include'))</AsmIncludeDirectories>
+  </PropertyGroup>
+</Project>

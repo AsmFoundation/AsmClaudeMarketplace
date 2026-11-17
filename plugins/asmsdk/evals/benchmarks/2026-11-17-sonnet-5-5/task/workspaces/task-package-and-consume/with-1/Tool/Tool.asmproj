@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <!-- Freestanding Linux executable: bin/Debug/Tool, raw system calls, no libc. -->
+    <OutputType>Exe</OutputType>
+    <AsmRuntime>Freestanding</AsmRuntime>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Restored from the packages/ folder feed (see nuget.config), not through a project reference.
+         The package adds its include/ folder to the NASM include path and links its libcrc.a. -->
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

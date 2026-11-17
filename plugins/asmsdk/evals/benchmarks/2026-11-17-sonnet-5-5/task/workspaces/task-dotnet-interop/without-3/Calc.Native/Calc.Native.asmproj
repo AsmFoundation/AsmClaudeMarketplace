@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <!--
+    UNVERIFIED: written without access to the AsmFoundation.Sdk 0.1.0 docs. The properties below
+    follow standard MSBuild conventions (output file = $(TargetName)$(TargetExt)); check them
+    against the SDK's documentation. Sources are expected to be picked up by the default *.asm glob.
+  -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>libcalc</AssemblyName>
+    <TargetName>$(AssemblyName)</TargetName>
+    <TargetExt>.so</TargetExt>
+  </PropertyGroup>
+
+</Project>

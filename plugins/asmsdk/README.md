@@ -59,4 +59,12 @@ kinds of case:
 - **task cases:** run with and without the plugin. What the agent wrote is graded, and then
   built with the real SDK.
 
-See [`evals/README.md`](evals/README.md) for how to run the suite and what it measured.
+**First results (2026-11-17):**
+
+- **Triggering:** the skill loaded for 30 of 30 should-trigger runs and 0 of 30 near-miss
+  runs on Sonnet 5.5, and 10 of 10 and 0 of 10 on Opus 5.5.
+- **Tasks:** with the plugin, 12 of 12 agent-written workspaces built and passed their
+  checks with the real SDK, against 4 of 12 without it. The runs also took half the time.
+
+See [`evals/README.md`](evals/README.md) for how to run the suite, and the benchmark
+summaries for every number.

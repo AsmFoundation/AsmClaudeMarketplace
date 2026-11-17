@@ -1,0 +1,8 @@
+<Project>
+  <!-- Packed as build/Acme.Crc.props. Imported automatically into every project that references
+       Acme.Crc; puts the package's include/ folder (crc.inc) on the assembler include path.
+       NormalizeDirectory yields an absolute path with a trailing slash, which NASM's -I needs. -->
+  <ItemGroup>
+    <AsmIncludeDirectories Include="$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'include'))" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Builds libcalc.so first. It is a native library, so it is not referenced as an assembly. -->
+    <ProjectReference Include="../Calc.Native/Calc.Native.asmproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      OutputItemType="NativeAsmLibrary" />
+  </ItemGroup>
+
+  <!-- Put the native library next to Calc.App.dll (build and publish output) so P/Invoke can load it. -->
+  <Target Name="IncludeNativeAsmLibrary" AfterTargets="ResolveProjectReferences">
+    <Warning Condition="'@(NativeAsmLibrary)' == ''"
+             Text="Calc.Native reported no output file, so libcalc.so will not be copied next to Calc.App." />
+    <ItemGroup>
+      <None Include="@(NativeAsmLibrary)">
+        <Link>%(NativeAsmLibrary.Filename)%(NativeAsmLibrary.Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </None>
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Required by [LibraryImport] source generation. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Builds libcalc.so first and copies it next to the program (no assembly reference is added). -->
+    <ProjectReference Include="../Calc.Native/Calc.Native.asmproj" />
+  </ItemGroup>
+
+</Project>

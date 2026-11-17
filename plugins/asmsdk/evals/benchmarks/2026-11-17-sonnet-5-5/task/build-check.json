@@ -1,0 +1,480 @@
+[
+  {
+    "case": "task-defines-keep-debug",
+    "arm": "with",
+    "run": 1,
+    "graderScore": 1,
+    "files": [
+      "Fast/Fast.asmproj"
+    ],
+    "built": true,
+    "ran": null,
+    "details": [],
+    "errors": []
+  },
+  {
+    "case": "task-defines-keep-debug",
+    "arm": "with",
+    "run": 2,
+    "graderScore": 1,
+    "files": [
+      "Fast/Fast.asmproj"
+    ],
+    "built": true,
+    "ran": null,
+    "details": [],
+    "errors": []
+  },
+  {
+    "case": "task-defines-keep-debug",
+    "arm": "with",
+    "run": 3,
+    "graderScore": 1,
+    "files": [
+      "Fast/Fast.asmproj"
+    ],
+    "built": true,
+    "ran": null,
+    "details": [],
+    "errors": []
+  },
+  {
+    "case": "task-defines-keep-debug",
+    "arm": "without",
+    "run": 1,
+    "graderScore": 0.6666666666666666,
+    "files": [
+      "Fast/Fast.asmproj"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [],
+    "errors": [
+      "Debug: check.asm:5: error: USE_AVX2 missing",
+      "Debug: AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64 -g -F dwarf -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\" -DDEBUG -o \"check.o\" \"check.asm\"\" exited with code 1. [Fast.asmproj]",
+      "Debug: <temp>/claude/b4b744323551faf0/ea039380-5575-4d47-9cfc-5db8b9e4d32f/scratchpad/bc-work/task-defines-keep-debug-without-1/Fast/check.asm:5: error: USE_AVX2 missing",
+      "Release: check.asm:5: error: USE_AVX2 missing",
+      "Release: AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64  -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\"  -o \"check.o\" \"check.asm\"\" exited with code 1. [Fast.asmproj]",
+      "Release: <temp>/claude/b4b744323551faf0/ea039380-5575-4d47-9cfc-5db8b9e4d32f/scratchpad/bc-work/task-defines-keep-debug-without-1/Fast/check.asm:5: error: USE_AVX2 missing"
+    ]
+  },
+  {
+    "case": "task-defines-keep-debug",
+    "arm": "without",
+    "run": 2,
+    "graderScore": 0.6666666666666666,
+    "files": [
+      "Fast/Fast.asmproj"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [],
+    "errors": [
+      "Debug: check.asm:5: error: USE_AVX2 missing",
+      "Debug: AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64 -g -F dwarf -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\" -DDEBUG -o \"check.o\" \"check.asm\"\" exited with code 1. [Fast.asmproj]",
+      "Debug: <temp>/claude/b4b744323551faf0/ea039380-5575-4d47-9cfc-5db8b9e4d32f/scratchpad/bc-work/task-defines-keep-debug-without-2/Fast/check.asm:5: error: USE_AVX2 missing",
+      "Release: check.asm:5: error: USE_AVX2 missing",
+      "Release: AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64  -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\"  -o \"check.o\" \"check.asm\"\" exited with code 1. [Fast.asmproj]",
+      "Release: <temp>/claude/b4b744323551faf0/ea039380-5575-4d47-9cfc-5db8b9e4d32f/scratchpad/bc-work/task-defines-keep-debug-without-2/Fast/check.asm:5: error: USE_AVX2 missing"
+    ]
+  },
+  {
+    "case": "task-defines-keep-debug",
+    "arm": "without",
+    "run": 3,
+    "graderScore": 0.6666666666666666,
+    "files": [
+      "Fast/Fast.asmproj"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [],
+    "errors": [
+      "Debug: check.asm:5: error: USE_AVX2 missing",
+      "Debug: AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64 -g -F dwarf -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\" -DDEBUG -o \"check.o\" \"check.asm\"\" exited with code 1. [Fast.asmproj]",
+      "Debug: <temp>/claude/b4b744323551faf0/ea039380-5575-4d47-9cfc-5db8b9e4d32f/scratchpad/bc-work/task-defines-keep-debug-without-3/Fast/check.asm:5: error: USE_AVX2 missing",
+      "Release: check.asm:5: error: USE_AVX2 missing",
+      "Release: AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64  -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\"  -o \"check.o\" \"check.asm\"\" exited with code 1. [Fast.asmproj]",
+      "Release: <temp>/claude/b4b744323551faf0/ea039380-5575-4d47-9cfc-5db8b9e4d32f/scratchpad/bc-work/task-defines-keep-debug-without-3/Fast/check.asm:5: error: USE_AVX2 missing"
+    ]
+  },
+  {
+    "case": "task-dotnet-interop",
+    "arm": "with",
+    "run": 1,
+    "graderScore": 1,
+    "files": [
+      "Calc.App/Calc.App.csproj",
+      "Calc.App/Program.cs",
+      "Calc.Native/Calc.Native.asmproj",
+      "Calc.Native/calc.asm",
+      "Calc.slnx",
+      "global.json"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "agent global.json",
+      "run: exit 0: 10"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-dotnet-interop",
+    "arm": "with",
+    "run": 2,
+    "graderScore": 1,
+    "files": [
+      "Calc.App/Calc.App.csproj",
+      "Calc.App/Program.cs",
+      "Calc.Native/Calc.Native.asmproj",
+      "Calc.Native/calc.asm",
+      "Calc.slnx",
+      "global.json"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "agent global.json",
+      "run: exit 0: 10"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-dotnet-interop",
+    "arm": "with",
+    "run": 3,
+    "graderScore": 1,
+    "files": [
+      "Calc.App/Calc.App.csproj",
+      "Calc.App/Program.cs",
+      "Calc.Native/Calc.Native.asmproj",
+      "Calc.Native/calc.asm",
+      "Calc.slnx",
+      "global.json"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "agent global.json",
+      "run: exit 0: 10"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-dotnet-interop",
+    "arm": "without",
+    "run": 1,
+    "graderScore": 0.5714285714285714,
+    "files": [
+      "Calc.App/Calc.App.csproj",
+      "Calc.App/Program.cs",
+      "Calc.Native/Calc.Native.asmproj",
+      "Calc.Native/calc.asm",
+      "Calc.slnx"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [
+      "global.json injected"
+    ],
+    "errors": [
+      "Calc.slnx(2,4): error MSB4025: The project file could not be loaded. Microsoft.VisualStudio.SolutionPersistence.Model.SolutionException: ProjectType '' not found. (Parameter 'projectTypeName')",
+      "Calc.slnx(2,4): error MSB4025:  ---> Microsoft.VisualStudio.SolutionPersistence.Model.SolutionArgumentException: ProjectType '' not found. (Parameter 'projectTypeName')",
+      "Calc.slnx(2,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Model.SolutionModel.AddProject(String filePath, String projectTypeName, SolutionFolderModel folder)",
+      "Calc.slnx(2,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Serializer.Xml.XmlDecorators.XmlProject.AddToModel(SolutionModel solution)",
+      "Calc.slnx(2,4): error MSB4025:    --- End of inner exception stack trace ---",
+      "Calc.slnx(2,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Serializer.Xml.XmlDecorators.XmlSolution.ToModel()"
+    ]
+  },
+  {
+    "case": "task-dotnet-interop",
+    "arm": "without",
+    "run": 2,
+    "graderScore": 0.5714285714285714,
+    "files": [
+      "Calc.App/Calc.App.csproj",
+      "Calc.App/Program.cs",
+      "Calc.Native/Calc.Native.asmproj",
+      "Calc.Native/calc.asm",
+      "Calc.slnx"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [
+      "global.json injected"
+    ],
+    "errors": [
+      "Calc.slnx(3,4): error MSB4025: The project file could not be loaded. Microsoft.VisualStudio.SolutionPersistence.Model.SolutionException: ProjectType '' not found. (Parameter 'projectTypeName')",
+      "Calc.slnx(3,4): error MSB4025:  ---> Microsoft.VisualStudio.SolutionPersistence.Model.SolutionArgumentException: ProjectType '' not found. (Parameter 'projectTypeName')",
+      "Calc.slnx(3,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Model.SolutionModel.AddProject(String filePath, String projectTypeName, SolutionFolderModel folder)",
+      "Calc.slnx(3,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Serializer.Xml.XmlDecorators.XmlProject.AddToModel(SolutionModel solution)",
+      "Calc.slnx(3,4): error MSB4025:    --- End of inner exception stack trace ---",
+      "Calc.slnx(3,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Serializer.Xml.XmlDecorators.XmlSolution.ToModel()"
+    ]
+  },
+  {
+    "case": "task-dotnet-interop",
+    "arm": "without",
+    "run": 3,
+    "graderScore": 0.5714285714285714,
+    "files": [
+      "Calc.App/Calc.App.csproj",
+      "Calc.App/Program.cs",
+      "Calc.Native/Calc.Native.asmproj",
+      "Calc.Native/calc.asm",
+      "Calc.slnx"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [
+      "global.json injected"
+    ],
+    "errors": [
+      "Calc.slnx(2,4): error MSB4025: The project file could not be loaded. Microsoft.VisualStudio.SolutionPersistence.Model.SolutionException: ProjectType '' not found. (Parameter 'projectTypeName')",
+      "Calc.slnx(2,4): error MSB4025:  ---> Microsoft.VisualStudio.SolutionPersistence.Model.SolutionArgumentException: ProjectType '' not found. (Parameter 'projectTypeName')",
+      "Calc.slnx(2,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Model.SolutionModel.AddProject(String filePath, String projectTypeName, SolutionFolderModel folder)",
+      "Calc.slnx(2,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Serializer.Xml.XmlDecorators.XmlProject.AddToModel(SolutionModel solution)",
+      "Calc.slnx(2,4): error MSB4025:    --- End of inner exception stack trace ---",
+      "Calc.slnx(2,4): error MSB4025:    at Microsoft.VisualStudio.SolutionPersistence.Serializer.Xml.XmlDecorators.XmlSolution.ToModel()"
+    ]
+  },
+  {
+    "case": "task-fix-pic-link-errors",
+    "arm": "with",
+    "run": 1,
+    "graderScore": 1,
+    "files": [
+      "Hash/hash.asm",
+      "Hash/mix.asm"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "exports: ['hash64']"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-fix-pic-link-errors",
+    "arm": "with",
+    "run": 2,
+    "graderScore": 1,
+    "files": [
+      "Hash/hash.asm",
+      "Hash/mix.asm"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "exports: ['hash64']"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-fix-pic-link-errors",
+    "arm": "with",
+    "run": 3,
+    "graderScore": 1,
+    "files": [
+      "Hash/hash.asm",
+      "Hash/mix.asm"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "exports: ['hash64']"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-fix-pic-link-errors",
+    "arm": "without",
+    "run": 1,
+    "graderScore": 1,
+    "files": [
+      "Hash/hash.asm",
+      "Hash/mix.asm"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "exports: ['hash64']"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-fix-pic-link-errors",
+    "arm": "without",
+    "run": 2,
+    "graderScore": 1,
+    "files": [
+      "Hash/hash.asm",
+      "Hash/mix.asm"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "exports: ['hash64']"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-fix-pic-link-errors",
+    "arm": "without",
+    "run": 3,
+    "graderScore": 1,
+    "files": [
+      "Hash/hash.asm",
+      "Hash/mix.asm"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "exports: ['hash64']"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-package-and-consume",
+    "arm": "with",
+    "run": 1,
+    "graderScore": 1,
+    "files": [
+      "Crc/Crc.asmproj",
+      "Crc/crc.asm",
+      "Crc/include/crc.inc",
+      "Tool/Tool.asmproj",
+      "Tool/main.asm",
+      "global.json",
+      "nuget.config",
+      "packages/.gitkeep"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "agent global.json",
+      "run Tool/bin/Debug/Tool: exit 0"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-package-and-consume",
+    "arm": "with",
+    "run": 2,
+    "graderScore": 0.875,
+    "files": [
+      "Crc/Crc.asmproj",
+      "Crc/crc.asm",
+      "Crc/include/crc.inc",
+      "Tool/Tool.asmproj",
+      "Tool/main.asm",
+      "global.json",
+      "nuget.config",
+      "packages/.gitkeep"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "agent global.json",
+      "run Tool/bin/Debug/Tool: exit 0"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-package-and-consume",
+    "arm": "with",
+    "run": 3,
+    "graderScore": 1,
+    "files": [
+      "Crc/Crc.asmproj",
+      "Crc/crc.asm",
+      "Crc/include/crc.inc",
+      "Tool/Tool.asmproj",
+      "Tool/main.asm",
+      "global.json",
+      "nuget.config",
+      "packages/README.md"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "agent global.json",
+      "run Tool/bin/Debug/Tool: exit 0"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-package-and-consume",
+    "arm": "without",
+    "run": 1,
+    "graderScore": 0.875,
+    "files": [
+      "Crc/Crc.asmproj",
+      "Crc/build/Acme.Crc.props",
+      "Crc/crc.asm",
+      "Crc/crc.inc",
+      "NuGet.config",
+      "Tool/Tool.asmproj",
+      "Tool/main.asm",
+      "packages/.gitkeep"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [
+      "global.json injected"
+    ],
+    "errors": [
+      "main.asm:6: error: unable to open include file `crc.inc': No such file or directory",
+      "AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64 -g -F dwarf -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\" -DDEBUG -o \"main.o\" \"main.asm\"\" exited with code 1. [Tool.asmproj]"
+    ]
+  },
+  {
+    "case": "task-package-and-consume",
+    "arm": "without",
+    "run": 2,
+    "graderScore": 0.75,
+    "files": [
+      "Crc/Crc.asmproj",
+      "Crc/crc.asm",
+      "Crc/crc.inc",
+      "Crc/package/Acme.Crc.targets",
+      "Tool/Tool.asmproj",
+      "Tool/main.asm",
+      "nuget.config",
+      "packages/.gitkeep"
+    ],
+    "built": true,
+    "ran": true,
+    "details": [
+      "global.json injected",
+      "run Tool/bin/Debug/Tool: exit 0"
+    ],
+    "errors": []
+  },
+  {
+    "case": "task-package-and-consume",
+    "arm": "without",
+    "run": 3,
+    "graderScore": 0.875,
+    "files": [
+      "Crc/Crc.asmproj",
+      "Crc/crc.asm",
+      "Crc/crc.inc",
+      "Crc/nuget/Acme.Crc.props",
+      "Tool/Tool.asmproj",
+      "Tool/main.asm",
+      "nuget.config",
+      "packages/.gitkeep"
+    ],
+    "built": false,
+    "ran": null,
+    "details": [
+      "global.json injected"
+    ],
+    "errors": [
+      "main.asm:5: error: unable to open include file `crc.inc': No such file or directory",
+      "AsmFoundation.Build.targets(174,5): error MSB3073: The command \"\"nasm.exe\" -f elf64 -g -F dwarf -w+all -w-reloc-rel-dword -w-reloc-abs-qword  -I\"\" -DDEBUG -o \"main.o\" \"main.asm\"\" exited with code 1. [Tool.asmproj]"
+    ]
+  }
+]

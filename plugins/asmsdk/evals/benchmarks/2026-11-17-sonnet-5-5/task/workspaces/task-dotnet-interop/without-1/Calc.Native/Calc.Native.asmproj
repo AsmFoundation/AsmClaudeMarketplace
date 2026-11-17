@@ -1,0 +1,15 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <!--
+    x86-64 NASM shared library. The output file must be libcalc.so:
+    Calc.App loads it with DllImport("calc"). Source: calc.asm.
+    The property names below are assumed from MSBuild conventions and were
+    not checked against the AsmFoundation.Sdk 0.1.0 documentation.
+  -->
+  <PropertyGroup>
+    <OutputType>SharedLibrary</OutputType>
+    <AssemblyName>libcalc</AssemblyName>
+    <TargetExt>.so</TargetExt>
+  </PropertyGroup>
+
+</Project>

@@ -72,6 +72,34 @@ python evals/build_check.py --result task.json --feed <folder with AsmFoundation
 
 ## Results
 
-See [`benchmarks/`](benchmarks). Each dated folder holds the raw `aggregate-result.json`
-files, the HTML reports, `build-check.json` and a `SUMMARY.md` with the numbers and what
-they mean.
+### 2026-11-17
+
+Plugin 0.1.0, with no judge model anywhere.
+
+| Measure | Result |
+|---|---|
+| Should-trigger requests loaded the skill, Sonnet 5.5 (3 runs each) | **30 / 30** |
+| Near misses stayed silent, Sonnet 5.5 | **30 / 30** |
+| The same on Opus 5.5 (1 run each) | **10 / 10** and **10 / 10** |
+| Task graders, with vs without the plugin (Sonnet 5.5, 3 runs per arm) | **1.00** vs 0.78 (mean over 4 cases) |
+| Workspaces that built and passed the real-SDK check | **12 / 12** with the plugin, **4 / 12** without |
+| Mean time and total cost per arm | 232 s, $8.27 with; 444 s, $11.04 without |
+
+**Without the plugin, the runs failed in these ways:**
+
+- the SDK not resolvable (no `msbuild-sdks`);
+- an `.slnx` the CLI rejects (`MSB4025`);
+- `liblibcalc.so` instead of `libcalc.so`;
+- invented properties (`AsmDefines`) that never reach NASM;
+- `DEBUG` lost;
+- a package that ships no include file.
+
+**The one task without a difference:** fixing `R_X86_64_PC32` with `hidden`. The base
+model already knows that rule.
+
+**Details:**
+
+- [`benchmarks/2026-11-17-sonnet-5-5/SUMMARY.md`](benchmarks/2026-11-17-sonnet-5-5/SUMMARY.md):
+  the full suite, including what every run wrote;
+- [`benchmarks/2026-11-17-opus-5-5/SUMMARY.md`](benchmarks/2026-11-17-opus-5-5/SUMMARY.md):
+  the trigger cross-check.

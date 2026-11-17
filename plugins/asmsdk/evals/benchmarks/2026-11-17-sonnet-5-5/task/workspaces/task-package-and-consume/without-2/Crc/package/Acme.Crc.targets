@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- Shipped as build/Acme.Crc.targets. NuGet imports it into every project that references
+       Acme.Crc, which puts the package's include/ folder on the NASM include path so that
+       %include "crc.inc" resolves.
+       The trailing slash matters: NASM prepends the -I value to the file name verbatim.
+       AsmIncludeDirectory is an assumed AsmFoundation.Sdk item name (unverified). -->
+  <ItemGroup>
+    <AsmIncludeDirectory Include="$(MSBuildThisFileDirectory)../include/" />
+  </ItemGroup>
+
+</Project>

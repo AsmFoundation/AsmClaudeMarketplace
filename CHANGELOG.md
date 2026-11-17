@@ -19,5 +19,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     checks, and `inspect_elf.py` inspects ELF outputs;
   - a `claude plugin eval` suite: 20 trigger cases and 4 task cases, plus a build check that
     builds and runs what each arm wrote. Results are committed in
-    `plugins/asmsdk/evals/benchmarks/`.
+    `plugins/asmsdk/evals/benchmarks/`:
+    - triggering was 30/30 and 0/30 on Sonnet 5.5, and 10/10 and 0/10 on Opus 5.5;
+    - task graders scored 1.00 with the plugin and 0.78 without;
+    - 12 of 12 workspaces built with the real SDK, against 4 of 12.
 - **ROADMAP.md,** the proposed next plugins.

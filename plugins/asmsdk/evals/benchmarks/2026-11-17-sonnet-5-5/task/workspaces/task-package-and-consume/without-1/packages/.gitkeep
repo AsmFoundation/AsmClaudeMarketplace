@@ -1,0 +1,2 @@
+Local NuGet feed (see ../NuGet.config). Keep this folder: restore fails with NU1301 if a configured feed folder does not exist.
+Filled by: dotnet pack Crc/Crc.asmproj -o packages

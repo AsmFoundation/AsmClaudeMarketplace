@@ -1,0 +1,2 @@
+Local NuGet folder feed (see ../nuget.config). It must exist before the first restore.
+Fill it with: dotnet pack Crc/Crc.asmproj -o packages

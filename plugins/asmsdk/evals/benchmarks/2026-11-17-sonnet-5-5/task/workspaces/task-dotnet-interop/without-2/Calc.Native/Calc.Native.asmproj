@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <OutputType>SharedLibrary</OutputType>
+    <!-- The output file must be named libcalc.so. -->
+    <AssemblyName>libcalc</AssemblyName>
+    <TargetName>libcalc</TargetName>
+    <TargetExt>.so</TargetExt>
+  </PropertyGroup>
+
+</Project>

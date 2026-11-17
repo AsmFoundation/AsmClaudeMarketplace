@@ -1,0 +1,11 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <AsmLibraryName>fast</AsmLibraryName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Added on top of the SDK defaults (DEBUG in Debug), in every configuration.
+         Do not use AsmDefineConstants here: it replaces the default and drops DEBUG. -->
+    <AsmDefine Include="USE_AVX2=1" />
+  </ItemGroup>
+</Project>

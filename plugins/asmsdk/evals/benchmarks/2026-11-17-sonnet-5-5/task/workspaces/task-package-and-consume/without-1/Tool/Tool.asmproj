@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <!-- ASSUMED SDK properties: names/values not verified against AsmFoundation.Sdk 0.1.0. -->
+    <OutputType>Exe</OutputType>
+    <TargetOS>Linux</TargetOS>
+    <!-- No libc / C runtime: entry point is _start, exit is a raw syscall. -->
+    <Freestanding>true</Freestanding>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Restored by version from the local feed (packages/); see NuGet.config. -->
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

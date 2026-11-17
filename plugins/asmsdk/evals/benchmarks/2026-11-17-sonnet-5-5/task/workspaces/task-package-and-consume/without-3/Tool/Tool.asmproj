@@ -1,0 +1,16 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <!-- SDK settings: property names not verified against the AsmFoundation.Sdk docs -->
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <Freestanding>true</Freestanding>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Restored from the local feed (see nuget.config); a package reference, not a project reference. -->
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Builds the native library first. It is not a .NET assembly, so it is not referenced
+         as one; its output file is returned in @(CalcNativeLibrary) instead. -->
+    <ProjectReference Include="../Calc.Native/Calc.Native.asmproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      OutputItemType="CalcNativeLibrary" />
+  </ItemGroup>
+
+  <!-- Puts libcalc.so next to Calc.App.dll so DllImport("calc") can find it at run time. -->
+  <Target Name="AddCalcNativeLibraryToOutput" AfterTargets="ResolveProjectReferences">
+    <Warning Condition="'@(CalcNativeLibrary)' == ''"
+             Text="Calc.Native did not report an output file, so libcalc.so will not be copied next to Calc.App." />
+    <ItemGroup>
+      <None Include="@(CalcNativeLibrary)"
+            Link="%(Filename)%(Extension)"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>

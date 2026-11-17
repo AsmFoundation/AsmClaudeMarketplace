@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>                 <!-- bin/Debug/Tool, a static ELF -->
+    <AsmRuntime>Freestanding</AsmRuntime>        <!-- no libc: _start and raw system calls -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- By version, from the local feed (packages/). Brings crc.inc and libcrc.a. -->
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

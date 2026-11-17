@@ -1,0 +1,20 @@
+default rel
+
+; Internal to libHash.so. `hidden` keeps these symbols out of the dynamic
+; symbol table (hash64 is the only public API) and makes them
+; non-preemptible, so hash.asm can reference them with plain PC-relative
+; addressing instead of needing a PLT/GOT.
+
+section .data
+global hash_seed:data hidden
+hash_seed: dq 0x9E3779B97F4A7C15
+
+section .text
+global mix64:function hidden
+mix64:                  ; uint64_t mix64(uint64_t x)
+    mov rax, rdi
+    shr rax, 33
+    xor rax, rdi
+    ret
+
+section .note.GNU-stack noalloc noexec nowrite progbits

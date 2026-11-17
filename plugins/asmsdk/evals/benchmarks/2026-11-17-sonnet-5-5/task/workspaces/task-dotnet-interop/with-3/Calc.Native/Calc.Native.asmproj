@@ -1,0 +1,9 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>              <!-- shared library -->
+    <AsmRuntime>Freestanding</AsmRuntime>         <!-- no libc: calc_sum needs none -->
+    <AsmLibraryName>calc</AsmLibraryName>         <!-- bin/<Configuration>/libcalc.so -->
+  </PropertyGroup>
+
+</Project>

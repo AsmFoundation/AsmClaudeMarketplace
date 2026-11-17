@@ -1,0 +1,28 @@
+<Project Sdk="AsmFoundation.Sdk/0.1.0">
+
+  <PropertyGroup>
+    <!-- SDK settings: property names not verified against the AsmFoundation.Sdk docs -->
+    <OutputType>StaticLibrary</OutputType>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- NuGet package Acme.Crc 1.2.0 -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Acme.Crc</PackageId>
+    <Version>1.2.0</Version>
+    <PackageVersion>1.2.0</PackageVersion>
+    <Authors>Acme</Authors>
+    <Description>Bit-by-bit CRC-32 step (crc_step) for x86-64 NASM projects.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Public include file, packed as include/crc.inc -->
+    <Content Include="crc.inc" Pack="true" PackagePath="include/" />
+
+    <!-- NuGet imports build/{PackageId}.props into every project that references the package,
+         so the packed file name must be exactly Acme.Crc.props. -->
+    <Content Include="nuget/Acme.Crc.props" Pack="true" PackagePath="build/" />
+  </ItemGroup>
+
+</Project>

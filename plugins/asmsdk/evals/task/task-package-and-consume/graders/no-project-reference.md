@@ -3,8 +3,8 @@ type: regex
 target:
   source: file
   path: Tool/Tool.asmproj
-pattern: 'ProjectReference'
+pattern: '<ProjectReference'
 match: not_contains
 ---
 
-Tool does not use a ProjectReference.
+Tool has no <ProjectReference> element (the word in a comment is fine).

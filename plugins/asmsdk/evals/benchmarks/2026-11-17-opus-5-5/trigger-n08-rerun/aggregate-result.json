@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.322",
+  "startedAt": "2026-11-17T20:53:12.666Z",
+  "durationSeconds": 301,
+  "costUsd": 0.048960199999999995,
+  "partial": false,
+  "suite": {
+    "root": "<repo>\\plugins\\asmsdk",
+    "ablation": "none",
+    "modelOverride": "claude-opus-5-5",
+    "caseFilter": "n08-*",
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "asmsdk",
+        "version": "0.1.0",
+        "path": "<repo>\\plugins\\asmsdk"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "n08-dllnotfound-sqlite",
+      "dir": "evals\\trigger\\n08-dllnotfound-sqlite",
+      "source": "prose",
+      "promptMarkdown": "My .NET app throws DllNotFoundException for libsqlite3 on Linux. How does native library probing work in .NET?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 1,
+            "costUsd": 0.048960199999999995,
+            "judgeCostUsd": 0,
+            "durationSeconds": 301,
+            "startedAt": "2026-11-17T20:53:12.799Z",
+            "error": "timed out after 300s",
+            "tracePath": "<temp>\\claude-eval-wVuLEH\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 1,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

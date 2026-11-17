@@ -1,0 +1,1063 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.322",
+  "startedAt": "2026-11-17T20:34:44.946Z",
+  "durationSeconds": 1059,
+  "costUsd": 8.395152199999998,
+  "partial": false,
+  "suite": {
+    "root": "<repo>\\plugins\\asmsdk",
+    "ablation": "none",
+    "modelOverride": "claude-opus-5-5",
+    "tagFilters": [
+      "trigger"
+    ],
+    "threshold": 1,
+    "concurrency": 3,
+    "plugins": [
+      {
+        "name": "asmsdk",
+        "version": "0.1.0",
+        "path": "<repo>\\plugins\\asmsdk"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "n01-pdep-semantics",
+      "dir": "evals\\trigger\\n01-pdep-semantics",
+      "source": "prose",
+      "promptMarkdown": "Explain what the x86-64 PDEP instruction does, with a small example of extracting bits.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 1,
+            "costUsd": 0.4429242,
+            "judgeCostUsd": 0,
+            "durationSeconds": 175,
+            "startedAt": "2026-11-17T20:34:45.113Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-AZjjYp\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n02-cmake-nasm",
+      "dir": "evals\\trigger\\n02-cmake-nasm",
+      "source": "prose",
+      "promptMarkdown": "Write a CMakeLists.txt that assembles .asm files with NASM and links them into a C program.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 3,
+            "costUsd": 0.061079999999999995,
+            "judgeCostUsd": 0,
+            "durationSeconds": 301,
+            "startedAt": "2026-11-17T20:34:45.114Z",
+            "error": "timed out after 300s",
+            "tracePath": "<temp>\\claude-eval-AZYqOQ\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n03-masm-cpuid",
+      "dir": "evals\\trigger\\n03-masm-cpuid",
+      "source": "prose",
+      "promptMarkdown": "Write a MASM (ml64) function for Windows x64 that returns the CPUID vendor string.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 4,
+            "costUsd": 0.4905086,
+            "judgeCostUsd": 0,
+            "durationSeconds": 169,
+            "startedAt": "2026-11-17T20:34:45.114Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-zPxZj1\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n04-nuget-trusted-publishing-csharp",
+      "dir": "evals\\trigger\\n04-nuget-trusted-publishing-csharp",
+      "source": "prose",
+      "promptMarkdown": "How do I set up trusted publishing to nuget.org for my C# class library in GitHub Actions?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 3,
+            "costUsd": 0.42128000000000004,
+            "judgeCostUsd": 0,
+            "durationSeconds": 150,
+            "startedAt": "2026-11-17T20:37:34.545Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-EEgby5\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n05-csproj-prebuild-script",
+      "dir": "evals\\trigger\\n05-csproj-prebuild-script",
+      "source": "prose",
+      "promptMarkdown": "In my .csproj, how do I run a PowerShell script before the build starts?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 3,
+            "costUsd": 0.8191316,
+            "judgeCostUsd": 0,
+            "durationSeconds": 294,
+            "startedAt": "2026-11-17T20:37:40.539Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-Xx5h4G\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n06-att-to-intel",
+      "dir": "evals\\trigger\\n06-att-to-intel",
+      "source": "prose",
+      "promptMarkdown": "Convert this AT&T syntax instruction to Intel syntax: movl %eax, 8(%rbx,%rcx,4)",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 1,
+            "costUsd": 0.0676282,
+            "judgeCostUsd": 0,
+            "durationSeconds": 10,
+            "startedAt": "2026-11-17T20:39:46.592Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-fk3eF9\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n07-avx2-intrinsics",
+      "dir": "evals\\trigger\\n07-avx2-intrinsics",
+      "source": "prose",
+      "promptMarkdown": "Optimize this C function with AVX2 intrinsics: void add(float *a, const float *b, int n) { for (int i = 0; i < n; i++) a[i] += b[i]; }",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 1,
+            "costUsd": 0.5200882,
+            "judgeCostUsd": 0,
+            "durationSeconds": 224,
+            "startedAt": "2026-11-17T20:39:56.948Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-kSIGlF\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n08-dllnotfound-sqlite",
+      "dir": "evals\\trigger\\n08-dllnotfound-sqlite",
+      "source": "prose",
+      "promptMarkdown": "My .NET app throws DllNotFoundException for libsqlite3 on Linux. How does native library probing work in .NET?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 0,
+            "costUsd": 0,
+            "judgeCostUsd": 0,
+            "durationSeconds": 301,
+            "startedAt": "2026-11-17T20:40:04.980Z",
+            "error": "timed out after 300s",
+            "tracePath": "<temp>\\claude-eval-BCqfjg\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n09-sysv-abi-question",
+      "dir": "evals\\trigger\\n09-sysv-abi-question",
+      "source": "prose",
+      "promptMarkdown": "In the System V AMD64 calling convention, which registers hold the first six integer arguments and which registers are callee-saved?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 1,
+            "costUsd": 0.1054602,
+            "judgeCostUsd": 0,
+            "durationSeconds": 28,
+            "startedAt": "2026-11-17T20:42:35.015Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-UERemF\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "n10-makefile-nasm-ld",
+      "dir": "evals\\trigger\\n10-makefile-nasm-ld",
+      "source": "prose",
+      "promptMarkdown": "Write a Makefile that assembles my NASM sources and links them into an ELF executable with ld.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-silent",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\"",
+            "min": 0,
+            "max": 0,
+            "arm": "both"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 2,
+            "costUsd": 0.0539078,
+            "judgeCostUsd": 0,
+            "durationSeconds": 302,
+            "startedAt": "2026-11-17T20:43:02.903Z",
+            "error": "timed out after 300s",
+            "tracePath": "<temp>\\claude-eval-RIDp43\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-silent",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 0x (expected 0..0)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t01-makefile-to-dotnet-build",
+      "dir": "evals\\trigger\\t01-makefile-to-dotnet-build",
+      "source": "prose",
+      "promptMarkdown": "I have a folder of NASM .asm files that we currently build with a Makefile. I'd like them built by `dotnet build` as part of our .NET solution instead, producing libfast.so. How do I set that up?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.4411912,
+            "judgeCostUsd": 0,
+            "durationSeconds": 40,
+            "startedAt": "2026-11-17T20:43:40.833Z",
+            "error": "exit 1: Reached maximum number of turns (5)",
+            "tracePath": "<temp>\\claude-eval-HxEUaG\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t02-asm0001-on-ci",
+      "dir": "evals\\trigger\\t02-asm0001-on-ci",
+      "source": "prose",
+      "promptMarkdown": "Our .asmproj build fails on the CI agent with `error ASM0001: The bundled toolchain was not found` but works on my laptop. What's going on and how do I fix it?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.4321116,
+            "judgeCostUsd": 0,
+            "durationSeconds": 65,
+            "startedAt": "2026-11-17T20:44:20.539Z",
+            "error": "exit 1: Reached maximum number of turns (5)",
+            "tracePath": "<temp>\\claude-eval-HDOfiF\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t03-pc32-fpic-link-error",
+      "dir": "evals\\trigger\\t03-pc32-fpic-link-error",
+      "source": "prose",
+      "promptMarkdown": "dotnet build of my assembly library project fails with `lld : error : relocation R_X86_64_PC32 cannot be used against symbol 'crc_fold'; recompile with -fPIC`. crc_fold is defined in another .asm file of the same project. How do I fix it?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 7,
+            "costUsd": 0.3620114,
+            "judgeCostUsd": 0,
+            "durationSeconds": 63,
+            "startedAt": "2026-11-17T20:45:06.394Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-rhZ5xV\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t04-share-asm-as-nuget",
+      "dir": "evals\\trigger\\t04-share-asm-as-nuget",
+      "source": "prose",
+      "promptMarkdown": "How do I publish my x86-64 assembly library as a NuGet package so that asm projects in other repos can reference it by version and get its .inc files automatically?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 8,
+            "costUsd": 0.6751356,
+            "judgeCostUsd": 0,
+            "durationSeconds": 165,
+            "startedAt": "2026-11-17T20:45:25.103Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-qreYlv\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t05-define-constants-debug",
+      "dir": "evals\\trigger\\t05-define-constants-debug",
+      "source": "prose",
+      "promptMarkdown": "I added <AsmDefineConstants>USE_AVX2</AsmDefineConstants> to my asm project and now the debug-only logging code vanished from Debug builds. Why, and what should I write instead?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.2948482,
+            "judgeCostUsd": 0,
+            "durationSeconds": 53,
+            "startedAt": "2026-11-17T20:46:09.410Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-LU9Zok\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t06-csharp-calls-nasm",
+      "dir": "evals\\trigger\\t06-csharp-calls-nasm",
+      "source": "prose",
+      "promptMarkdown": "Show me the project setup for a C# console app that calls a function sum_i64 implemented in NASM, with both projects in one .slnx solution built with AsmFoundation.Sdk.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 9,
+            "costUsd": 1.4099027999999998,
+            "judgeCostUsd": 0,
+            "durationSeconds": 298,
+            "startedAt": "2026-11-17T20:47:02.398Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-GqvTnt\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t07-libc-undefined-symbol",
+      "dir": "evals\\trigger\\t07-libc-undefined-symbol",
+      "source": "prose",
+      "promptMarkdown": "My assembly program built with AsmRuntime=Libc fails to link with `undefined symbol: strsignal`, although printf works fine. What do I change?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.321664,
+            "judgeCostUsd": 0,
+            "durationSeconds": 45,
+            "startedAt": "2026-11-17T20:48:05.110Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-hNCOHD\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t08-external-include-stale",
+      "dir": "evals\\trigger\\t08-external-include-stale",
+      "source": "prose",
+      "promptMarkdown": "Our asm sources include macros from ../common/macros.inc through an AsmIncludeDirectory item, but when I change a macro the build says it's up to date and the binary doesn't change. How do I make it rebuild correctly?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 7,
+            "costUsd": 0.3698126,
+            "judgeCostUsd": 0,
+            "durationSeconds": 69,
+            "startedAt": "2026-11-17T20:48:10.017Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-HLwRVy\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t09-ci-for-asmproj",
+      "dir": "evals\\trigger\\t09-ci-for-asmproj",
+      "source": "prose",
+      "promptMarkdown": "Set up GitHub Actions for a repo of .asmproj projects: build on Windows, Linux and macOS, run the executables on Linux, and push the packages to nuget.org when I push a version tag.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.8296598,
+            "judgeCostUsd": 0,
+            "durationSeconds": 214,
+            "startedAt": "2026-11-17T20:48:49.952Z",
+            "error": "exit 1: Reached maximum number of turns (5)",
+            "tracePath": "<temp>\\claude-eval-rGKtut\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    },
+    {
+      "name": "t10-static-link-of-dynamic",
+      "dir": "evals\\trigger\\t10-static-link-of-dynamic",
+      "source": "prose",
+      "promptMarkdown": "My freestanding exe project references our shared-library asm project and the link fails with 'attempted static link of dynamic object'. What should I change?",
+      "runsPerCase": 3,
+      "timeoutSeconds": 300,
+      "maxTurns": 5,
+      "graders": [
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.2768062,
+            "judgeCostUsd": 0,
+            "durationSeconds": 37,
+            "startedAt": "2026-11-17T20:49:18.919Z",
+            "error": "exit 1: Reached maximum number of turns (5)",
+            "tracePath": "<temp>\\claude-eval-03PqIS\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 20,
+    "casesPassed": 20,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

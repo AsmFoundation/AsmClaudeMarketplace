@@ -1,0 +1,1895 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.322",
+  "startedAt": "2026-11-17T20:08:10.614Z",
+  "durationSeconds": 2219,
+  "costUsd": 19.3129142,
+  "partial": false,
+  "suite": {
+    "root": "<repo>\\plugins\\asmsdk",
+    "ablation": "with-without",
+    "modelOverride": "claude-sonnet-5-5",
+    "tagFilters": [
+      "task"
+    ],
+    "threshold": 1,
+    "concurrency": 4,
+    "plugins": [
+      {
+        "name": "asmsdk",
+        "version": "0.1.0",
+        "path": "<repo>\\plugins\\asmsdk"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "task-defines-keep-debug",
+      "dir": "evals\\task\\task-defines-keep-debug",
+      "source": "prose",
+      "promptMarkdown": "Our asm library project `Fast/Fast.asmproj` (AsmFoundation.Sdk 0.1.0) currently reads:\n\n```xml\n<Project Sdk=\"AsmFoundation.Sdk\">\n  <PropertyGroup>\n    <AsmLibraryName>fast</AsmLibraryName>\n  </PropertyGroup>\n</Project>\n```\n\nand `Fast/fast.asm` uses `%ifdef DEBUG` blocks for extra checks in Debug builds. I need every build (Debug and Release) to also define the NASM symbol `USE_AVX2=1`, without changing anything else about how Debug and Release builds behave today. The project is not checked out here: write the complete updated project file to `Fast/Fast.asmproj` in the current directory. You cannot run commands. Keep explanations short.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "defines-use-avx2",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Fast/Fast.asmproj"
+            },
+            "pattern": "USE_AVX2",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "keeps-debug-defined",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Fast/Fast.asmproj"
+            },
+            "pattern": "<AsmDefine\\s+Include=\"USE_AVX2(=1)?\"|<AsmDefineConstants[^>]*>[^<]*\\bDEBUG\\b",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "library-name-kept",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Fast/Fast.asmproj"
+            },
+            "pattern": "<AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 5,
+            "costUsd": 0.111647,
+            "judgeCostUsd": 0,
+            "durationSeconds": 28,
+            "startedAt": "2026-11-17T20:08:11.103Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-cH3xqI\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "defines-use-avx2",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched USE_AVX2",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-debug-defined",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmDefine\\s+Include=\"USE_AVX2(=1)?\"|<AsmDefineConstants[^>]*>[^<]*\\bDEBUG\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-name-kept",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 4,
+            "costUsd": 0.09389,
+            "judgeCostUsd": 0,
+            "durationSeconds": 22,
+            "startedAt": "2026-11-17T20:08:11.104Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-pvaOwl\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "defines-use-avx2",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched USE_AVX2",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-debug-defined",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmDefine\\s+Include=\"USE_AVX2(=1)?\"|<AsmDefineConstants[^>]*>[^<]*\\bDEBUG\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-name-kept",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 6,
+            "costUsd": 0.11592590000000003,
+            "judgeCostUsd": 0,
+            "durationSeconds": 24,
+            "startedAt": "2026-11-17T20:08:11.104Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-uMNyV6\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "defines-use-avx2",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched USE_AVX2",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-debug-defined",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmDefine\\s+Include=\"USE_AVX2(=1)?\"|<AsmDefineConstants[^>]*>[^<]*\\bDEBUG\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-name-kept",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              }
+            ]
+          }
+        ],
+        "without": [
+          {
+            "score": 0.6666666666666666,
+            "passed": false,
+            "turns": 5,
+            "costUsd": 0.3330162,
+            "judgeCostUsd": 0,
+            "durationSeconds": 166,
+            "startedAt": "2026-11-17T20:08:11.104Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-8Crtgb\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "defines-use-avx2",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched USE_AVX2",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-debug-defined",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Fast/Fast.asmproj",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-name-kept",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.6666666666666666,
+            "passed": false,
+            "turns": 4,
+            "costUsd": 0.3030326,
+            "judgeCostUsd": 0,
+            "durationSeconds": 151,
+            "startedAt": "2026-11-17T20:08:32.885Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-VVBqvw\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "defines-use-avx2",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched USE_AVX2",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-debug-defined",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Fast/Fast.asmproj",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-name-kept",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.6666666666666666,
+            "passed": false,
+            "turns": 5,
+            "costUsd": 0.36862680000000003,
+            "judgeCostUsd": 0,
+            "durationSeconds": 180,
+            "startedAt": "2026-11-17T20:08:34.631Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-D1HxHu\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "defines-use-avx2",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched USE_AVX2",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-debug-defined",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Fast/Fast.asmproj",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-name-kept",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <AsmLibraryName>\\s*fast\\s*</AsmLibraryName>",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1,
+        "scoreWithout": 0.6666666666666666,
+        "passRateWithout": 0,
+        "delta": 0.33333333333333337
+      }
+    },
+    {
+      "name": "task-dotnet-interop",
+      "dir": "evals\\task\\task-dotnet-interop",
+      "source": "prose",
+      "promptMarkdown": "Create a new solution in the current directory, from scratch, with exactly these projects:\n\n- `Calc.slnx`: the solution, listing both projects.\n- `Calc.Native/Calc.Native.asmproj`: an x86-64 assembly shared library built with AsmFoundation.Sdk 0.1.0 (NASM syntax). Its source `Calc.Native/calc.asm` exports `int64_t calc_sum(const int64_t *values, int64_t count)`. The library file must be named `libcalc.so`.\n- `Calc.App/Calc.App.csproj`: a .NET 10 console app whose `Calc.App/Program.cs` calls calc_sum through P/Invoke on the array {1, 2, 3, 4} and prints the result.\n\n`dotnet build Calc.slnx` must work on a Windows, Linux or macOS machine that has only the .NET 10 SDK. Write every file that is needed to disk, in the current directory. You cannot run commands. Keep explanations short.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "asm-exports-calc-sum",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Calc.Native/calc.asm"
+            },
+            "pattern": "global\\s+\\$?calc_sum\\b",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "asmproj-uses-sdk",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Calc.Native/Calc.Native.asmproj"
+            },
+            "pattern": "Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "csproj-references-asmproj",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Calc.App/Calc.App.csproj"
+            },
+            "pattern": "<ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "global-json-pins-sdk",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "global.json"
+            },
+            "pattern": "\"msbuild-sdks\"\\s*:\\s*\\{[^}]*\"AsmFoundation\\.Sdk\"\\s*:\\s*\"0\\.1\\.0\"",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "library-named-calc",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Calc.Native/Calc.Native.asmproj"
+            },
+            "pattern": "<(AsmLibraryName|AssemblyName)>\\s*calc\\s*</",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "pinvoke-library-name",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Calc.App/Program.cs"
+            },
+            "pattern": "(LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        },
+        {
+          "name": "slnx-asmproj-type-guid",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Calc.slnx"
+            },
+            "pattern": "Calc\\.Native\\.asmproj[^>]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^>]*Calc\\.Native\\.asmproj",
+            "flags": "i",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 20,
+            "costUsd": 1.0315827,
+            "judgeCostUsd": 0,
+            "durationSeconds": 342,
+            "startedAt": "2026-11-17T20:08:38.837Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-n8Sbai\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "asm-exports-calc-sum",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+\\$?calc_sum\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "asmproj-uses-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "csproj-references-asmproj",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "global-json-pins-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched \"msbuild-sdks\"\\s*:\\s*\\{[^}]*\"AsmFoundation\\.Sdk\"\\s*:\\s*\"0\\.1\\.0\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-named-calc",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(AsmLibraryName|AssemblyName)>\\s*calc\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "pinvoke-library-name",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched (LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              },
+              {
+                "name": "slnx-asmproj-type-guid",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Calc\\.Native\\.asmproj[^>]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^>]*Calc\\.Native\\.asmproj",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 19,
+            "costUsd": 0.7717726,
+            "judgeCostUsd": 0,
+            "durationSeconds": 256,
+            "startedAt": "2026-11-17T20:10:57.590Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-7NkJth\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "asm-exports-calc-sum",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+\\$?calc_sum\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "asmproj-uses-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "csproj-references-asmproj",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "global-json-pins-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched \"msbuild-sdks\"\\s*:\\s*\\{[^}]*\"AsmFoundation\\.Sdk\"\\s*:\\s*\"0\\.1\\.0\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-named-calc",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(AsmLibraryName|AssemblyName)>\\s*calc\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "pinvoke-library-name",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched (LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              },
+              {
+                "name": "slnx-asmproj-type-guid",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Calc\\.Native\\.asmproj[^>]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^>]*Calc\\.Native\\.asmproj",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 25,
+            "costUsd": 1.1018572,
+            "judgeCostUsd": 0,
+            "durationSeconds": 347,
+            "startedAt": "2026-11-17T20:11:03.790Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-FjTi4X\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "asm-exports-calc-sum",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+\\$?calc_sum\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "asmproj-uses-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "csproj-references-asmproj",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "global-json-pins-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched \"msbuild-sdks\"\\s*:\\s*\\{[^}]*\"AsmFoundation\\.Sdk\"\\s*:\\s*\"0\\.1\\.0\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-named-calc",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(AsmLibraryName|AssemblyName)>\\s*calc\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "pinvoke-library-name",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched (LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              },
+              {
+                "name": "slnx-asmproj-type-guid",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Calc\\.Native\\.asmproj[^>]*13B669BE-BB05-4DDF-9536-439F39A36129|13B669BE-BB05-4DDF-9536-439F39A36129[^>]*Calc\\.Native\\.asmproj",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ],
+        "without": [
+          {
+            "score": 0.5714285714285714,
+            "passed": false,
+            "turns": 10,
+            "costUsd": 1.1900487,
+            "judgeCostUsd": 0,
+            "durationSeconds": 564,
+            "startedAt": "2026-11-17T20:11:34.531Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-34Ntdx\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "asm-exports-calc-sum",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+\\$?calc_sum\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "asmproj-uses-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "csproj-references-asmproj",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "global-json-pins-sdk",
+                "passed": false,
+                "weight": 1,
+                "explanation": "grader threw: case \"task-dotnet-interop\" grader focus file \"global.json\": path \"global.json\" does not exist",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-named-calc",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Calc.Native/Calc.Native.asmproj",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "pinvoke-library-name",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched (LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "slnx-asmproj-type-guid",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Calc.slnx",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.5714285714285714,
+            "passed": false,
+            "turns": 9,
+            "costUsd": 1.4534918000000001,
+            "judgeCostUsd": 0,
+            "durationSeconds": 672,
+            "startedAt": "2026-11-17T20:14:20.742Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-7giSpn\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "asm-exports-calc-sum",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+\\$?calc_sum\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "asmproj-uses-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "csproj-references-asmproj",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "global-json-pins-sdk",
+                "passed": false,
+                "weight": 1,
+                "explanation": "grader threw: case \"task-dotnet-interop\" grader focus file \"global.json\": path \"global.json\" does not exist",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-named-calc",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Calc.Native/Calc.Native.asmproj",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "pinvoke-library-name",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched (LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "slnx-asmproj-type-guid",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Calc.slnx",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.5714285714285714,
+            "passed": false,
+            "turns": 14,
+            "costUsd": 1.6082880000000002,
+            "judgeCostUsd": 0,
+            "durationSeconds": 766,
+            "startedAt": "2026-11-17T20:15:13.788Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-LdegYK\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "asm-exports-calc-sum",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+\\$?calc_sum\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "asmproj-uses-sdk",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched Sdk=\"AsmFoundation\\.Sdk(/0\\.1\\.0)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "csproj-references-asmproj",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <ProjectReference\\s+Include=\"[^\"]*Calc\\.Native\\.asmproj\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "global-json-pins-sdk",
+                "passed": false,
+                "weight": 1,
+                "explanation": "grader threw: case \"task-dotnet-interop\" grader focus file \"global.json\": path \"global.json\" does not exist",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "library-named-calc",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Calc.Native/Calc.Native.asmproj",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "pinvoke-library-name",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched (LibraryImport|DllImport)\\s*\\(\\s*\"(lib)?calc(\\.so)?\"",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "slnx-asmproj-type-guid",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern not found in file Calc.slnx",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1,
+        "scoreWithout": 0.5714285714285714,
+        "passRateWithout": 0,
+        "delta": 0.4285714285714286
+      }
+    },
+    {
+      "name": "task-fix-pic-link-errors",
+      "dir": "evals\\task\\task-fix-pic-link-errors",
+      "source": "prose",
+      "promptMarkdown": "`dotnet build` of our shared library project `Hash/Hash.asmproj` (AsmFoundation.Sdk 0.1.0, default settings, builds libHash.so) fails at link time:\n\n```\nlld : error : relocation R_X86_64_PC32 cannot be used against symbol 'mix64'; recompile with -fPIC\nlld : error : relocation R_X86_64_PC32 cannot be used against symbol 'hash_seed'; recompile with -fPIC\n```\n\nThe two sources are `Hash/hash.asm`:\n\n```nasm\ndefault rel\nextern mix64, hash_seed\nsection .text\nglobal hash64:function\nhash64:                 ; uint64_t hash64(uint64_t x)\n    mov rax, [rel hash_seed]\n    xor rdi, rax\n    call mix64\n    ret\nsection .note.GNU-stack noalloc noexec nowrite progbits\n```\n\nand `Hash/mix.asm`:\n\n```nasm\ndefault rel\nsection .data\nglobal hash_seed:data 8\nhash_seed: dq 0x9E3779B97F4A7C15\nsection .text\nglobal mix64:function\nmix64:                  ; uint64_t mix64(uint64_t x)\n    mov rax, rdi\n    shr rax, 33\n    xor rax, rdi\n    ret\nsection .note.GNU-stack noalloc noexec nowrite progbits\n```\n\nOnly `hash64` is meant to be the library's public API. Fix the code. The sources are not checked out here: write both corrected files to `Hash/hash.asm` and `Hash/mix.asm` in the current directory. You cannot run commands. Keep explanations short.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "hash64-still-exported",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Hash/hash.asm"
+            },
+            "pattern": "global\\s+hash64\\b",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "mix64-hidden",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Hash/mix.asm"
+            },
+            "pattern": "global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "seed-hidden",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Hash/mix.asm"
+            },
+            "pattern": "global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 8,
+            "costUsd": 0.34774000000000005,
+            "judgeCostUsd": 0,
+            "durationSeconds": 129,
+            "startedAt": "2026-11-17T20:16:51.221Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-GJNZQ5\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "hash64-still-exported",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash64\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "mix64-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "seed-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 7,
+            "costUsd": 0.46109859999999997,
+            "judgeCostUsd": 0,
+            "durationSeconds": 200,
+            "startedAt": "2026-11-17T20:19:00.108Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-F72xhL\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "hash64-still-exported",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash64\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "mix64-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "seed-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 8,
+            "costUsd": 0.5150336,
+            "judgeCostUsd": 0,
+            "durationSeconds": 210,
+            "startedAt": "2026-11-17T20:20:58.515Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-waXg1W\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "hash64-still-exported",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash64\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "mix64-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "seed-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              }
+            ]
+          }
+        ],
+        "without": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 5,
+            "costUsd": 0.8588929999999999,
+            "judgeCostUsd": 0,
+            "durationSeconds": 416,
+            "startedAt": "2026-11-17T20:22:19.910Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-YrUTu7\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "hash64-still-exported",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash64\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "mix64-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "seed-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 4,
+            "costUsd": 0.6854259999999999,
+            "judgeCostUsd": 0,
+            "durationSeconds": 337,
+            "startedAt": "2026-11-17T20:24:28.854Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-vMNDWe\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "hash64-still-exported",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash64\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "mix64-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "seed-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 4,
+            "costUsd": 0.527182,
+            "judgeCostUsd": 0,
+            "durationSeconds": 256,
+            "startedAt": "2026-11-17T20:25:32.991Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-5xz2CV\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "hash64-still-exported",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash64\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "mix64-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+mix64\\s*:\\s*function\\s+hidden\\b",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "seed-hidden",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched global\\s+hash_seed\\s*:\\s*data\\s+hidden\\b|global\\s+hash_seed\\s*:\\s*hidden\\b",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1,
+        "scoreWithout": 1,
+        "passRateWithout": 1,
+        "delta": 0
+      }
+    },
+    {
+      "name": "task-package-and-consume",
+      "dir": "evals\\task\\task-package-and-consume",
+      "source": "prose",
+      "promptMarkdown": "Create from scratch, in the current directory, two x86-64 assembly projects built with AsmFoundation.Sdk 0.1.0 (NASM):\n\n1. `Crc/Crc.asmproj`: a static library whose source `Crc/crc.asm` exports `uint32_t crc_step(uint32_t crc, uint32_t byte)` (any simple bit-by-bit CRC-32 step is fine). Its public include file `crc.inc` declares the function (extern) and `CRC_SEED equ 0xFFFFFFFF`. `dotnet pack` must produce the NuGet package `Acme.Crc` version 1.2.0, and asm projects that reference that package must get crc.inc on their include path automatically.\n2. `Tool/Tool.asmproj`: a freestanding Linux executable (no libc) whose `Tool/main.asm` includes crc.inc, calls crc_step(CRC_SEED, 0x61) and exits with status 0. It must consume Acme.Crc as a NuGet package by version (a PackageReference), not through a project reference.\n\nPackages are restored from a local folder feed `packages/` in the current directory (filled by `dotnet pack Crc/Crc.asmproj -o packages`) plus nuget.org. Write every file that is needed to disk, in the current directory. You cannot run commands. Keep explanations short.",
+      "runsPerCase": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 30,
+      "graders": [
+        {
+          "name": "include-file-in-include-folder",
+          "type": "file_exists",
+          "weight": 1,
+          "config": {
+            "path": "Crc/include/crc.inc",
+            "exists": true
+          }
+        },
+        {
+          "name": "local-feed",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "nuget.config"
+            },
+            "pattern": "packages",
+            "flags": "i",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "no-project-reference",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Tool/Tool.asmproj"
+            },
+            "pattern": "ProjectReference",
+            "flags": "",
+            "match": "not_contains"
+          }
+        },
+        {
+          "name": "package-id",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Crc/Crc.asmproj"
+            },
+            "pattern": "<PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "package-reference-by-version",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Tool/Tool.asmproj"
+            },
+            "pattern": "<PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "package-version",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Crc/Crc.asmproj"
+            },
+            "pattern": "<(Package)?Version>\\s*1\\.2\\.0\\s*</",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "skill-fired",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Skill",
+            "input_match": "\"skill\"\\s*:\\s*\"(?:[\\w-]+:)?asmsdk\""
+          }
+        },
+        {
+          "name": "static-library",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Crc/Crc.asmproj"
+            },
+            "pattern": "<OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "tool-is-exe",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": {
+              "source": "file",
+              "path": "Tool/Tool.asmproj"
+            },
+            "pattern": "<OutputType>\\s*Exe\\s*</",
+            "flags": "",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 22,
+            "costUsd": 1.1813672000000002,
+            "judgeCostUsd": 0,
+            "durationSeconds": 381,
+            "startedAt": "2026-11-17T20:27:59.829Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-GzlvUF\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "include-file-in-include-folder",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Crc/include/crc.inc exists as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "local-feed",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched packages",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "no-project-reference",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-id",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-reference-by-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(Package)?Version>\\s*1\\.2\\.0\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              },
+              {
+                "name": "static-library",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "tool-is-exe",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*Exe\\s*</",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.875,
+            "passed": false,
+            "turns": 22,
+            "costUsd": 1.2157571,
+            "judgeCostUsd": 0,
+            "durationSeconds": 402,
+            "startedAt": "2026-11-17T20:29:16.097Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-2EJcfW\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "include-file-in-include-folder",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Crc/include/crc.inc exists as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "local-feed",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched packages",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "no-project-reference",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern found (expected absent)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-id",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-reference-by-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(Package)?Version>\\s*1\\.2\\.0\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              },
+              {
+                "name": "static-library",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "tool-is-exe",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*Exe\\s*</",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 28,
+            "costUsd": 1.3203826,
+            "judgeCostUsd": 0,
+            "durationSeconds": 437,
+            "startedAt": "2026-11-17T20:29:48.722Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-24ZjQW\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "include-file-in-include-folder",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Crc/include/crc.inc exists as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "local-feed",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched packages",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "no-project-reference",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-id",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-reference-by-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(Package)?Version>\\s*1\\.2\\.0\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "skill-fired",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Skill called 1x (expected 1..∞)",
+                "withOnly": true,
+                "scored": false
+              },
+              {
+                "name": "static-library",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "tool-is-exe",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*Exe\\s*</",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ],
+        "without": [
+          {
+            "score": 0.875,
+            "passed": false,
+            "turns": 11,
+            "costUsd": 1.3673427,
+            "judgeCostUsd": 0,
+            "durationSeconds": 677,
+            "startedAt": "2026-11-17T20:30:05.453Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-mOFNgB\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "include-file-in-include-folder",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Crc/include/crc.inc missing (expected present)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "local-feed",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched packages",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "no-project-reference",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-id",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-reference-by-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(Package)?Version>\\s*1\\.2\\.0\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "static-library",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "tool-is-exe",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*Exe\\s*</",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.75,
+            "passed": false,
+            "turns": 12,
+            "costUsd": 1.2073938,
+            "judgeCostUsd": 0,
+            "durationSeconds": 593,
+            "startedAt": "2026-11-17T20:34:21.284Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-x6IXjH\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "include-file-in-include-folder",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Crc/include/crc.inc missing (expected present)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "local-feed",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched packages",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "no-project-reference",
+                "passed": false,
+                "weight": 1,
+                "explanation": "pattern found (expected absent)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-id",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-reference-by-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(Package)?Version>\\s*1\\.2\\.0\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "static-library",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "tool-is-exe",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*Exe\\s*</",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          },
+          {
+            "score": 0.875,
+            "passed": false,
+            "turns": 11,
+            "costUsd": 1.1421181,
+            "judgeCostUsd": 0,
+            "durationSeconds": 552,
+            "startedAt": "2026-11-17T20:35:58.145Z",
+            "error": null,
+            "tracePath": "<temp>\\claude-eval-tETYra\\out\\trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "include-file-in-include-folder",
+                "passed": false,
+                "weight": 1,
+                "explanation": "Crc/include/crc.inc missing (expected present)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "local-feed",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched packages",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "no-project-reference",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-id",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageId>\\s*Acme\\.Crc\\s*</PackageId>",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-reference-by-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <PackageReference\\s+Include=\"Acme\\.Crc\"\\s+Version=\"\\[?1\\.2\\.0",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "package-version",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <(Package)?Version>\\s*1\\.2\\.0\\s*</",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "static-library",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*StaticLibrary\\s*</|<AsmProduceStaticLibrary>\\s*true\\s*<",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "tool-is-exe",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched <OutputType>\\s*Exe\\s*</",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 0.9583333333333334,
+        "passRate": 0.6666666666666666,
+        "scoreWithout": 0.8333333333333334,
+        "passRateWithout": 0,
+        "delta": 0.125
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 4,
+    "casesPassed": 3,
+    "overallScore": 0.9895833333333334,
+    "overallPassRate": 0.9166666666666666,
+    "meanDelta": 0.2217261904761905
+  }
+}

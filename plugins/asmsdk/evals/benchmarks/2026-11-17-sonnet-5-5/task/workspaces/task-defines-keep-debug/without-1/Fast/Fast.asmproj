@@ -1,0 +1,7 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <AsmLibraryName>fast</AsmLibraryName>
+    <!-- Appended, not replaced, so defines the SDK sets per configuration (e.g. DEBUG) are kept. -->
+    <AsmDefines>$(AsmDefines);USE_AVX2=1</AsmDefines>
+  </PropertyGroup>
+</Project>

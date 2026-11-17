@@ -1,0 +1,13 @@
+<Project Sdk="AsmFoundation.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>          <!-- shared library -->
+    <AsmLibraryName>calc</AsmLibraryName>     <!-- bin/<Configuration>/libcalc.so -->
+  </PropertyGroup>
+
+  <!-- No bundled toolchain package exists for Windows arm64; its x64 emulation runs the win-x64 tools. -->
+  <PropertyGroup Condition="'$(NETCoreSdkRuntimeIdentifier)' == 'win-arm64'">
+    <AsmHostRid>win-x64</AsmHostRid>
+  </PropertyGroup>
+
+</Project>
