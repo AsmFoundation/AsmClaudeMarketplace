@@ -1,0 +1,12 @@
+{
+  "name": "asmsdk",
+  "version": "0.1.0",
+  "description": "AsmSdk (AsmFoundation.Sdk 0.1.0): x86-64 assembly as .asmproj projects built with dotnet build, shared as versioned NuGet packages and P/Invoked from .csproj projects. A skill with the complete SDK reference, verified footguns and NASM linking rules, and scripts to scaffold, lint and inspect.",
+  "author": {
+    "name": "AsmFoundation"
+  },
+  "homepage": "https://github.com/AsmFoundation/AsmClaudeMarketplace/tree/main/plugins/asmsdk",
+  "repository": "https://github.com/AsmFoundation/AsmClaudeMarketplace",
+  "license": "Apache-2.0",
+  "keywords": ["asmsdk", "asmproj", "assembly", "nasm", "x86-64", "msbuild", "nuget", "dotnet", "elf", "asmfoundation"]
+}

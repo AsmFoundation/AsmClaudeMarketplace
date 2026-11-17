@@ -1,0 +1,3 @@
+# Text files are stored with LF, so skills, scripts and eval cases read the same on every OS.
+* text=auto eol=lf
+*.png binary

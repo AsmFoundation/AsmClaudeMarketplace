@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "asmfoundation",
+  "description": "Claude Code plugins for the AsmFoundation ecosystem: x86-64 assembly projects, packages and services, one plugin per topic.",
+  "owner": {
+    "name": "AsmFoundation",
+    "email": "contact@nucs.dev"
+  },
+  "plugins": [
+    {
+      "name": "asmsdk",
+      "source": "./plugins/asmsdk",
+      "description": "AsmSdk (AsmFoundation.Sdk): build, reference, package and release x86-64 assembly as .asmproj projects with dotnet build, NuGet and MSBuild. Covers every SDK property, item, target and error, the NASM rules that decide whether code links, .NET and Python interop, CI and releases, plus scripts that scaffold projects, lint them for known footguns and inspect the ELF outputs.",
+      "category": "development",
+      "author": {
+        "name": "AsmFoundation"
+      },
+      "homepage": "https://github.com/AsmFoundation/AsmClaudeMarketplace/tree/main/plugins/asmsdk"
+    }
+  ]
+}

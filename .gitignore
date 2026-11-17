@@ -1,0 +1,10 @@
+# Raw `claude plugin eval` output: curated copies are committed under evals/benchmarks/.
+plugins/*/evals/results/
+
+# Python
+__pycache__/
+*.pyc
+
+# Build outputs from trying the scripts locally
+bin/
+obj/

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The scripts' unit tests: every linter check has a fixture that must trigger it.
+      - name: Script tests
+        run: |
+          for tests in plugins/*/tests; do
+            python -m unittest discover -s "$tests" -v
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Manifest, front matter and plugin-directory checks. Validation needs no credentials.
+      - name: Validate the marketplace and every plugin
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate .
+          for plugin in plugins/*/; do
+            claude plugin validate "$plugin"
+          done
