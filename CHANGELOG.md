@@ -10,6 +10,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`asmsdk` 0.1.2** extends the jump-table rule beyond shared libraries. A `dq label` in
+  `.rodata` also fails to link in a Libc executable, which is a PIE. A Freestanding
+  executable, linked `-static`, accepts it in any section, because its addresses are fixed
+  at link time. Both facts were verified with the bundled NASM 3.02 and ld.lld 23.1.5.
+  AsmSdk's guide and its build-targets comment now say the same.
 - **`asmsdk` 0.1.1** points at the AsmSdk documentation site,
   <https://asmfoundation.github.io/AsmSdk/>: the skill names it as the page to check for
   newer SDK versions and to link users to, and the plugin and marketplace READMEs link it.
