@@ -22,7 +22,7 @@ The marketplace's name is `asmfoundation`, so its plugins install as
 
 | Plugin | Covers | Status |
 |---|---|---|
-| [`asmsdk`](plugins/asmsdk) | [AsmSdk](https://github.com/AsmFoundation/AsmSdk) (`AsmFoundation.Sdk`): `.asmproj` projects, NuGet packages of assembly code, .NET and Python interop, toolchain, CI and releases. Includes a complete property, item, target and error reference, the NASM rules that decide whether code links, and scripts to scaffold, lint and inspect | 0.1.0, for AsmSdk 0.1.0 |
+| [`asmsdk`](plugins/asmsdk) | [AsmSdk](https://asmfoundation.github.io/AsmSdk/) (`AsmFoundation.Sdk`): `.asmproj` projects, NuGet packages of assembly code, .NET and Python interop, toolchain, CI and releases. Includes a complete property, item, target and error reference, the NASM rules that decide whether code links, and scripts to scaffold, lint and inspect | 0.1.1, for AsmSdk 0.1.0 |
 
 See [ROADMAP.md](ROADMAP.md) for the plugins proposed next, and why.
 

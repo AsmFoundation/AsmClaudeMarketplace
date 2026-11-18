@@ -19,7 +19,9 @@ machine produces the same **Linux x86-64 ELF**, and needs nothing installed beyo
 
 This skill documents **AsmFoundation.Sdk 0.1.0**. Each behavior marked *verified* was
 measured by building with that release and its bundled tools. If `global.json` pins a
-newer version, check that release's `docs/asmproj.md` where the two might differ.
+newer version, check the SDK's documentation site, <https://asmfoundation.github.io/AsmSdk/>
+(or that release's `docs/asmproj.md`), where the two might differ. The site has the same
+facts written for people, so it is the page to link a user to.
 
 `<this-skill>` below stands for the skill's base directory, which is shown when the skill
 loads. The scripts live in its `scripts/` folder, and the references in `references/`.

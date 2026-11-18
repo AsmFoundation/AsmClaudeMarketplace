@@ -1,6 +1,7 @@
 # asmsdk: a Claude Code plugin for AsmSdk
 
-[AsmSdk](https://github.com/AsmFoundation/AsmSdk) (`AsmFoundation.Sdk`) is the
+[AsmSdk](https://github.com/AsmFoundation/AsmSdk) (`AsmFoundation.Sdk`; documentation at
+<https://asmfoundation.github.io/AsmSdk/>) is the
 AsmFoundation's project, dependency and build management for x86-64 assembly, on MSBuild
 and NuGet. This plugin gives Claude the knowledge to build, reference, package, test and
 release `.asmproj` projects without guessing.

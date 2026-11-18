@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## 2026-11-18
+
+### Changed
+
+- **`asmsdk` 0.1.1** points at the AsmSdk documentation site,
+  <https://asmfoundation.github.io/AsmSdk/>: the skill names it as the page to check for
+  newer SDK versions and to link users to, and the plugin and marketplace READMEs link it.
+  The site's guides are written from the same verified facts as the skill.
+
 ## 2026-11-17
 
 ### Added
