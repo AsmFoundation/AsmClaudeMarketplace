@@ -5,7 +5,7 @@ Why this exists: a working asm project needs several pieces that are easy to get
 by hand - global.json's msbuild-sdks entry, the .slnx type GUID, a public include/ folder (or
 packages ship no include files), `default rel`, `wrt ..plt`, symbol types and sizes, the
 .note.GNU-stack section, a 16-byte aligned stack before libc calls. This script writes all of
-them consistently for the chosen output kind and runtime.
+them consistently for the chosen output kind and target framework (freestanding or libc).
 
 Safety: it never overwrites an existing file. Existing files are reported as "kept". The only
 files it edits in place are global.json (adding the msbuild-sdks entry when missing) and the
@@ -13,8 +13,8 @@ files it edits in place are global.json (adding the msbuild-sdks entry when miss
 
 Usage:
     new_asmproj.py <project-dir> [--name NAME] [--kind library|static|exe|objects]
-                   [--runtime freestanding|libc] [--lib-name NAME] [--sln PATH.slnx]
-                   [--package-id ID] [--version 1.0.0] [--sdk-version 0.1.0] [--root DIR]
+                   [--framework freestanding|libc] [--assembly-name NAME] [--sln PATH.slnx]
+                   [--package-id ID] [--version 1.0.0] [--sdk-version 0.2.0] [--root DIR]
 
 Exit codes: 0 = done (some files may have been kept); 2 = usage error or a file could not be
 written or parsed.
@@ -31,7 +31,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
 #: SDK version the skill documents; global.json gets it unless --sdk-version says otherwise.
-DEFAULT_SDK_VERSION = "0.1.0"
+DEFAULT_SDK_VERSION = "0.2.0"
 
 #: The generic MSBuild ("Common Project System") project type. An .asmproj entry in a .slnx
 #: without it fails with "MSB4025 ... ProjectType '' not found".
@@ -50,32 +50,32 @@ class ScaffoldError(Exception):
     """
 
 
-def symbol_prefix(lib_name: str) -> str:
+def symbol_prefix(assembly_name: str) -> str:
     """Derive the NASM symbol prefix from a library name ("hello-utils" -> "hello_utils").
 
     NASM has one global namespace per link, so every exported symbol gets the library's
     prefix; characters NASM does not accept in identifiers become underscores.
 
     Args:
-        lib_name: The library base name (AsmLibraryName).
+        assembly_name: The library base name (AssemblyName).
 
     Returns:
         A lower-case identifier that starts with a letter or underscore.
     """
-    prefix = re.sub(r"[^A-Za-z0-9_]", "_", lib_name).lower()
+    prefix = re.sub(r"[^A-Za-z0-9_]", "_", assembly_name).lower()
     return prefix if re.match(r"[A-Za-z_]", prefix) else "_" + prefix
 
 
-def asmproj_text(kind: str, runtime: str, lib_name: Optional[str], package_id: Optional[str], version: Optional[str]) -> str:
-    """Build the .asmproj XML for the requested kind, runtime and packaging.
+def asmproj_text(kind: str, framework: str, assembly_name: Optional[str], package_id: Optional[str], version: Optional[str]) -> str:
+    """Build the .asmproj XML for the requested kind, target framework and packaging.
 
     Only properties that differ from the SDK defaults are written, so the file shows the
     project's real decisions; comments say what each produces.
 
     Args:
         kind: One of KIND_TO_OUTPUT_TYPE's keys.
-        runtime: "freestanding" or "libc".
-        lib_name: AsmLibraryName, or None to keep the default (the project name).
+        framework: The TargetFramework, "freestanding" or "libc".
+        assembly_name: AssemblyName, or None to keep the default (the project name).
         package_id: PackageId for dotnet pack, or None for a project that is not packed.
         version: Package version; used only with package_id.
 
@@ -85,11 +85,11 @@ def asmproj_text(kind: str, runtime: str, lib_name: Optional[str], package_id: O
     props: List[str] = []
     if kind != "library":
         props.append(f"    <OutputType>{KIND_TO_OUTPUT_TYPE[kind]}</OutputType>")
-    if runtime == "libc":
-        props.append("    <AsmRuntime>Libc</AsmRuntime>   <!-- glibc 2.34+ at run time; DT_NEEDED libc.so.6 -->")
-    if lib_name:
-        output = {"library": f"lib{lib_name}.so", "static": f"lib{lib_name}.a", "exe": lib_name, "objects": "objects only"}[kind]
-        props.append(f"    <AsmLibraryName>{lib_name}</AsmLibraryName>   <!-- bin/<Configuration>/{output} -->")
+    if framework == "libc":
+        props.append("    <TargetFramework>libc</TargetFramework>   <!-- glibc 2.34+ at run time; DT_NEEDED libc.so.6 -->")
+    if assembly_name:
+        output = {"library": f"lib{assembly_name}.so", "static": f"lib{assembly_name}.a", "exe": assembly_name, "objects": "objects only"}[kind]
+        props.append(f"    <AssemblyName>{assembly_name}</AssemblyName>   <!-- bin/<Configuration>/{framework}/{output} -->")
     if package_id and kind == "library":
         # A packed shared library also ships a .a, so asm consumers (and freestanding
         # executables, which link -static) can link it without a run-time dependency.
@@ -97,7 +97,7 @@ def asmproj_text(kind: str, runtime: str, lib_name: Optional[str], package_id: O
     if package_id:
         props.append(f"    <PackageId>{package_id}</PackageId>")
         props.append(f"    <Version>{version or '1.0.0'}</Version>")
-    body = "\n".join(props) if props else "    <!-- Library (lib<project>.so), Freestanding: the SDK defaults. -->"
+    body = "\n".join(props) if props else "    <!-- Library (lib<project>.so), freestanding: the SDK defaults. -->"
     return f'<Project Sdk="AsmFoundation.Sdk">\n  <PropertyGroup>\n{body}\n  </PropertyGroup>\n</Project>\n'
 
 
@@ -118,19 +118,19 @@ def include_text(prefix: str, function: str) -> str:
             f"extern {function}\n\n%endif\n")
 
 
-def source_text(kind: str, runtime: str, prefix: str) -> Tuple[str, str]:
-    """Build the starter source for the kind and runtime, following every linking rule.
+def source_text(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
+    """Build the starter source for the kind and target framework, following every linking rule.
 
     Args:
         kind: One of KIND_TO_OUTPUT_TYPE's keys.
-        runtime: "freestanding" or "libc".
+        framework: The TargetFramework, "freestanding" or "libc".
         prefix: Symbol prefix (see symbol_prefix).
 
     Returns:
         (file name, text). Libraries export one function with type and size; executables
         start at _start (freestanding) or main (libc).
     """
-    if kind == "exe" and runtime == "libc":
+    if kind == "exe" and framework == "libc":
         return "main.asm", (
             "; main.asm - int main(int argc, char **argv) on glibc; started by the SDK's crt1.\n"
             "default rel\n\nextern printf\n\nsection .rodata\n"
@@ -155,7 +155,7 @@ def source_text(kind: str, runtime: str, prefix: str) -> Tuple[str, str]:
             "    mov     eax, SYS_EXIT_GROUP\n    xor     edi, edi                ; status 0\n    syscall\n\n"
             + NOTE_GNU_STACK)
     function = f"{prefix}_add"
-    if runtime == "libc":
+    if framework == "libc":
         return f"{prefix}.asm", (
             f"; {prefix}.asm - size_t {prefix}_length(const char *s): strlen through glibc's PLT.\n"
             f"default rel\n\n%include \"{prefix}.inc\"\n\nextern strlen\n\nsection .text\n\n"
@@ -335,13 +335,13 @@ def scaffold(args: argparse.Namespace) -> List[str]:
     name = args.name or os.path.basename(project_dir.rstrip("\\/"))
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_.\-]*$", name):
         raise ScaffoldError(f"project name '{name}' is not a valid file and MSBuild project name")
-    if args.lib_name and not re.match(r"^[A-Za-z0-9_.\-]+$", args.lib_name):
-        raise ScaffoldError(f"--lib-name '{args.lib_name}' must use letters, digits, '.', '_' or '-'")
+    if args.assembly_name and not re.match(r"^[A-Za-z0-9_.\-]+$", args.assembly_name):
+        raise ScaffoldError(f"--assembly-name '{args.assembly_name}' must use letters, digits, '.', '_' or '-'")
     report: List[str] = []
     project_file = os.path.join(project_dir, f"{name}.asmproj")
-    write_new(project_file, asmproj_text(args.kind, args.runtime, args.lib_name, args.package_id, args.version), report)
-    prefix = symbol_prefix(args.lib_name or name)
-    file_name, source = source_text(args.kind, args.runtime, prefix)
+    write_new(project_file, asmproj_text(args.kind, args.framework, args.assembly_name, args.package_id, args.version), report)
+    prefix = symbol_prefix(args.assembly_name or name)
+    file_name, source = source_text(args.kind, args.framework, prefix)
     if args.kind != "exe":
         # Public include files live in include/: ProjectReference consumers get it on their -I
         # path, and dotnet pack ships it (a project without include/ packs no include files).
@@ -366,8 +366,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("project_dir", help="folder of the new project (created if missing)")
     parser.add_argument("--name", help="project name (default: the folder name)")
     parser.add_argument("--kind", choices=sorted(KIND_TO_OUTPUT_TYPE), default="library")
-    parser.add_argument("--runtime", choices=["freestanding", "libc"], default="freestanding")
-    parser.add_argument("--lib-name", help="AsmLibraryName: lib<name>.so / .a, or the executable's name")
+    parser.add_argument("--framework", choices=["freestanding", "libc"], default="freestanding",
+                        help="the TargetFramework: freestanding (raw system calls) or libc (glibc)")
+    parser.add_argument("--assembly-name", help="AssemblyName: lib<name>.so / .a, or the executable's name")
     parser.add_argument("--sln", help="a .slnx to create or add the project to (a .sln gets instructions)")
     parser.add_argument("--package-id", help="make the project packable with this PackageId")
     parser.add_argument("--version", help="package version (default 1.0.0; needs --package-id)")
@@ -376,9 +377,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
     if args.version and not args.package_id:
         parser.error("--version needs --package-id")
-    if args.runtime == "libc" and args.kind in ("static", "objects"):
-        print("note: AsmRuntime=Libc has no effect on a static library or objects; the code that links "
-              "them decides. The starter source still calls strlen through the PLT.", file=sys.stderr)
+    if args.framework == "libc" and args.kind in ("static", "objects"):
+        print("note: TargetFramework=libc links nothing into a static library or objects, but it records that "
+              "the code needs glibc: a freestanding project cannot reference it (NU1201). The starter source "
+              "calls strlen through the PLT.", file=sys.stderr)
     try:
         report = scaffold(args)
     except ScaffoldError as exc:

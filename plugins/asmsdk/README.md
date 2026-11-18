@@ -17,15 +17,18 @@ also ask for it by name: `/asmsdk:asmsdk`.
 
 ## What it covers
 
-It documents **AsmFoundation.Sdk 0.1.0**. Every behavior the skill marks *verified* was
-measured by building with that release and its bundled NASM 3.02 and `ld.lld` 23.1.5, on
-Windows and in Linux.
+It documents **AsmFoundation.Sdk 0.2.0**, where an `.asmproj` uses .NET's own properties
+(`TargetFramework` `freestanding` or `libc`, `AssemblyName`, `DefineConstants`, `LinkerArg`…).
+Every behavior the skill marks *verified* was measured by building with an AsmSdk release and
+its bundled NASM 3.02 and `ld.lld` 23.1.5, on Windows and in Linux; what 0.2.0 changed is
+verified by AsmSdk's own end-to-end tests. For a 0.1.0 project, the skill and the linter name
+each setting's 0.2.0 replacement.
 
 | Part | Content |
 |---|---|
 | `SKILL.md` | the model, recipes (new projects, .NET interop, asm references, packages, glibc, defines, shared include folders), the NASM rules that decide whether code links, diagnostics, verified footguns |
 | `references/project-reference.md` | every property, item, metadata, target, generated file and error, with exact defaults and evaluation order |
-| `references/runtimes-and-linking.md` | Freestanding and Libc, exact link lines, the libc stub, production link options (`-z defs`, `--exclude-libs`, `$ORIGIN`), debug information |
+| `references/runtimes-and-linking.md` | the `freestanding` and `libc` target frameworks, exact link lines, the libc stub, production link options (`-z defs`, `--exclude-libs`, `$ORIGIN`, `ExportsFile`), debug information |
 | `references/nasm-for-asmsdk.md` | position-independent code with the exact linker errors, symbols, sections, includes, the System V ABI, system calls, templates that were run from Python |
 | `references/dependencies-and-packaging.md` | ProjectReference and PackageReference flows, pack layout, consumer props, Central Package Management, feeds, publishing |
 | `references/interop.md` | .NET P/Invoke (`LibraryImport`), marshalling, tests, Python `ctypes`, C headers |
@@ -40,8 +43,8 @@ All three need only Python 3.8+.
 
 | Script | Does |
 |---|---|
-| `scripts/new_asmproj.py` | scaffolds a project (library, static library, executable or objects; Freestanding or Libc; packable or not), its `global.json` entry and `.slnx` registration. It never overwrites a file |
-| `scripts/check_asmproj.py` | lints projects and sources with 31 checks, such as missing `default rel`, a call without `wrt ..plt`, a `hidden` that NASM ignores, a dropped `DEBUG`, an untracked include folder, a package without include files or a wrong reference kind. It exits 1 on errors |
+| `scripts/new_asmproj.py` | scaffolds a project (library, static library, executable or objects; `--framework freestanding` or `libc`; packable or not), its `global.json` entry and `.slnx` registration. It never overwrites a file |
+| `scripts/check_asmproj.py` | lints projects and sources with 33 checks, such as missing `default rel`, a call without `wrt ..plt`, a `hidden` that NASM ignores, a 0.1.0 setting 0.2.0 removed, two projects NuGet cannot tell apart, a freestanding project referencing libc-only code, an untracked include folder, a package without include files or a wrong reference kind. It exits 1 on errors |
 | `scripts/inspect_elf.py` | summarizes an ELF output or archive (type, SONAME, NEEDED, RUNPATH, interpreter, exports, imports, stack) using the toolchain's own `llvm-readobj`, and checks expectations for CI |
 
 `tests/test_scripts.py` gives every linter check a fixture that must trigger it, plus clean

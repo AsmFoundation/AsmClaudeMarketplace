@@ -11,8 +11,8 @@ wrote, and the committed results.
 | `trigger/` | 10 should-trigger + 10 near misses | Does Claude load the skill when, and only when, a request is about AsmSdk? | `tool_used: Skill` (`min: 0, max: 0` for near misses) |
 | `task/` | 4 tasks, run **with** and **without** the plugin | Does the plugin make Claude's answer correct? | free `regex` / `file_exists` graders over the files written, plus `build_check.py` |
 
-**Should-trigger requests** mix explicit ones (an `.asmproj`, ASM0001,
-`AsmDefineConstants`) with implicit ones: "build my NASM with `dotnet build`", "C# calling
+**Should-trigger requests** mix explicit ones (an `.asmproj`, ASM0001, an `ASM0102` after
+upgrading to 0.2.0) with implicit ones: "build my NASM with `dotnet build`", "C# calling
 NASM in one solution", a raw `ld.lld` relocation error.
 
 **Near misses** share vocabulary but belong elsewhere:
@@ -29,12 +29,12 @@ NASM in one solution", a raw `ld.lld` relocation error.
 
 | Case | What it tests |
 |---|---|
-| `task-dotnet-interop` | a new `.slnx` with an asm shared library and a .NET app that P/Invokes it: `global.json` msbuild-sdks, the `.slnx` type GUID, `AsmLibraryName`, `ProjectReference`, `LibraryImport` name |
+| `task-dotnet-interop` | a new `.slnx` with an asm shared library and a .NET app that P/Invokes it: `global.json` msbuild-sdks, the `.slnx` type GUID, `AssemblyName`, `ProjectReference`, `LibraryImport` name |
 | `task-package-and-consume` | a static library packed as `Acme.Crc` 1.2.0, consumed by version from a folder feed: public include file in `include/` (otherwise not packed), `PackageReference`, `nuget.config` |
-| `task-defines-keep-debug` | adding `USE_AVX2=1` without losing `DEBUG`: `AsmDefine` items, because `$(AsmDefineConstants);X` drops the default |
+| `task-defines-keep-debug` | adding `USE_AVX2=1` without changing Debug and Release: `DefineConstants`, to which 0.2.0 appends `DEBUG`/`RELEASE` itself (0.1.0's `AsmDefineConstants` dropped `DEBUG`; that was this task's trap until 0.2.0) |
 | `task-fix-pic-link-errors` | two `R_X86_64_PC32 … recompile with -fPIC` errors where only `hash64` may stay public: `hidden`, with the visibility before any size |
 
-**`build_check.py`** copies each kept workspace and builds it with AsmFoundation.Sdk 0.1.0
+**`build_check.py`** copies each kept workspace and builds it with AsmFoundation.Sdk 0.2.0
 and its bundled toolchain. It never builds a project that defines its own MSBuild targets.
 Then it runs what it can in a Linux container:
 
@@ -74,7 +74,9 @@ python evals/build_check.py --result task.json --feed <folder with AsmFoundation
 
 ### 2026-11-17
 
-Plugin 0.1.0, with no judge model anywhere.
+Plugin 0.1.0 against AsmFoundation.Sdk 0.1.0, with no judge model anywhere. The prompts,
+graders and build check were moved to 0.2.0 with plugin 0.2.0; these results were not
+re-measured.
 
 | Measure | Result |
 |---|---|

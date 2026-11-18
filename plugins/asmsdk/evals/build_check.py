@@ -134,7 +134,7 @@ def ensure_global_json(workspace: str) -> bool:
     if os.path.isfile(path):
         return True
     with open(path, "w", encoding="utf-8") as f:
-        f.write('{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" } }\n')
+        f.write('{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.2.0" } }\n')
     return False
 
 
@@ -249,7 +249,7 @@ def check(case: str, workspace: str, args: argparse.Namespace, env: Dict[str, st
         result["errors"] = errors_of(out) if code else []
         if code == 0:
             inspector = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "skills", "asmsdk", "scripts", "inspect_elf.py")
-            rc, out = run([sys.executable, inspector, "Hash/bin/Debug/libHash.so", "--json"], workspace, env)
+            rc, out = run([sys.executable, inspector, "Hash/bin/Debug/freestanding/libHash.so", "--json"], workspace, env)
             exports = sorted(e["name"] for e in json.loads(out)["exports"]) if rc == 0 else []
             result["details"].append(f"exports: {exports}")
             # The task's requirement: hash64 is the only public symbol.

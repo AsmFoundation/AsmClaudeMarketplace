@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Lint AsmSdk projects and their NASM sources for the mistakes that break builds or outputs.
 
-Why this exists: AsmFoundation.Sdk 0.1.0 has failure modes that are silent (a stale build, a
-package without include files, DEBUG quietly undefined) or that surface as linker messages far
-from their cause ("relocation R_X86_64_PC32 cannot be used against symbol"). Each check here
-encodes one of them, measured against the 0.1.0 targets and the bundled NASM 3.02 / ld.lld
-23.1.5, and reports the file, line and fix before anything is built.
+Why this exists: AsmFoundation.Sdk 0.2.0 has failure modes that are silent (a stale build, a
+package without include files) or that surface as messages far from their cause ("relocation
+R_X86_64_PC32 cannot be used against symbol", "Ambiguous project name"), and a 0.1.0 project
+fails on 0.2.0 until its settings are renamed. Each check here encodes one of them, measured
+against the 0.2.0 targets and the bundled NASM 3.02 / ld.lld 23.1.5, and reports the file, line
+and fix before anything is built.
 
 What it reads: every *.asmproj under the given path (or the given .asmproj), the projects they
 reference, their *.asm / *.inc files, the nearest global.json and Directory.Build.props, and
@@ -35,7 +36,19 @@ from dataclasses import asdict, dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 #: The SDK version whose behavior these checks encode.
-DOCUMENTED_SDK_VERSION = "0.1.0"
+DOCUMENTED_SDK_VERSION = "0.2.0"
+
+#: Settings 0.2.0 removed (the build fails with ASM0100-ASM0108), and what replaces each.
+#: AsmDefine items, the eighth, are checked separately: they are items, not properties.
+REMOVED_SETTINGS = {
+    "AsmLibraryName": "AssemblyName (still lib<name>.so, lib<name>.a, <name>)",
+    "AsmRuntime": "TargetFramework: freestanding (the default) or libc",
+    "AsmDefineConstants": "DefineConstants (DEBUG or RELEASE, FREESTANDING or LIBC are appended for you)",
+    "AsmDebugInfo": "DebugSymbols (DebugType=none turns DWARF off)",
+    "AsmEntryPoint": "StartupObject",
+    "AsmLinkFlags": "LinkerArg items, and ExportsFile for a version script",
+    "AsmOutputKind": "OutputType",
+}
 
 #: Generic MSBuild project type; an .slnx entry for an .asmproj needs it (MSB4025 otherwise).
 ASMPROJ_TYPE_GUID = "13B669BE-BB05-4DDF-9536-439F39A36129"
@@ -43,8 +56,9 @@ ASMPROJ_TYPE_GUID = "13B669BE-BB05-4DDF-9536-439F39A36129"
 #: Folders never scanned for sources: build outputs and tool state.
 SKIP_DIRS = {"bin", "obj", ".git", ".vs", ".idea", "node_modules", "artifacts"}
 
-#: Functions the 0.1.0 libc stub (stubs/libc.asm) defines. A Libc executable that calls a
-#: function outside this set fails with "undefined symbol" unless it is an AsmLibcSymbol item.
+#: Functions the libc stub (stubs/libc.asm; the list is the same in 0.1.0 and 0.2.0) defines.
+#: A libc executable that calls a function outside this set fails with "undefined symbol"
+#: unless it is an AsmLibcSymbol item.
 LIBC_STUB_FUNCTIONS = frozenset("""
 __libc_start_main __cxa_finalize __cxa_atexit atexit exit _exit abort __stack_chk_fail __assert_fail
 __errno_location __sched_cpucount malloc free calloc realloc reallocarray aligned_alloc posix_memalign
@@ -155,7 +169,7 @@ class Project:
     def prop_entries(self, name: str) -> List[Tuple[str, str]]:
         """Return every (value, condition) written for a property, case-insensitively.
 
-        Checks that must see conditional assignments (an OS-specific AsmLinkFlags) use this
+        Checks that must see conditional assignments (an OS-specific property) use this
         instead of prop(), which keeps only the last value.
 
         Args:
@@ -166,20 +180,47 @@ class Project:
         """
         return [v for k, vs in self.props.items() if k.lower() == name.lower() for v in vs]
 
+    def item_entries(self, item_type: str) -> List[Dict[str, str]]:
+        """Return every item of a type as written (attributes and metadata), case-insensitively.
+
+        Args:
+            item_type: The item type, such as LinkerArg or AsmDefine.
+
+        Returns:
+            The items' attribute dictionaries, in document order (Condition included).
+        """
+        return [i for k, vs in self.items.items() if k.lower() == item_type.lower() for i in vs]
+
     @property
     def kind(self) -> str:
-        """The AsmOutputKind the SDK will compute: SharedLibrary, StaticLibrary, Executable or Objects."""
-        explicit = self.prop("AsmOutputKind")
-        if explicit:
-            return explicit
+        """The output kind the SDK computes from OutputType: SharedLibrary, StaticLibrary, Executable or Objects."""
         output_type = (self.prop("OutputType") or "Library").lower()
         return {"exe": "Executable", "winexe": "Executable", "staticlibrary": "StaticLibrary",
                 "objects": "Objects"}.get(output_type, "SharedLibrary")
 
     @property
+    def frameworks(self) -> List[str]:
+        """The target frameworks the project builds: TargetFrameworks, else TargetFramework, else freestanding."""
+        multi = self.prop("TargetFrameworks")
+        if multi:
+            return [f.strip().lower() for f in multi.split(";") if f.strip()]
+        single = self.prop("TargetFramework")
+        return [single.strip().lower()] if single else ["freestanding"]
+
+    @property
     def runtime(self) -> str:
-        """AsmRuntime as the SDK reads it: "Libc" or "Freestanding"."""
-        return "Libc" if (self.prop("AsmRuntime") or "").lower() == "libc" else "Freestanding"
+        """"Libc" when any build of the project targets libc (it links glibc), else "Freestanding"."""
+        return "Libc" if "libc" in self.frameworks else "Freestanding"
+
+    @property
+    def libc_only(self) -> bool:
+        """True when every build targets libc, so a freestanding project cannot reference it (NU1201)."""
+        return all(f == "libc" for f in self.frameworks)
+
+    @property
+    def package_id(self) -> str:
+        """The name NuGet gives the project: PackageId, else AssemblyName, else the project name (as in .NET)."""
+        return self.prop("PackageId") or self.prop("AssemblyName") or os.path.splitext(os.path.basename(self.path))[0]
 
     @property
     def produces_static(self) -> bool:
@@ -188,7 +229,7 @@ class Project:
 
     @property
     def pic_required(self) -> bool:
-        """True when the linker will reject non-PIC code: shared libraries and Libc PIEs."""
+        """True when the linker will reject non-PIC code: shared libraries and libc executables (PIEs)."""
         return self.kind == "SharedLibrary" or (self.kind == "Executable" and self.runtime == "Libc")
 
 
@@ -585,7 +626,7 @@ class Linter:
         Args:
             project: The project whose SDK resolution is checked.
         """
-        if "/" in project.sdk:  # Sdk="AsmFoundation.Sdk/0.1.0" needs no global.json entry
+        if "/" in project.sdk:  # Sdk="AsmFoundation.Sdk/0.2.0" needs no global.json entry
             return
         folder = project.dir
         while True:
@@ -601,7 +642,7 @@ class Linter:
                 if not version:
                     self.add("error", "ASMSLN001", candidate, 0,
                              "global.json has no msbuild-sdks entry for AsmFoundation.Sdk, so the SDK cannot resolve (MSB4236)",
-                             '"msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" }')
+                             f'"msbuild-sdks": {{ "AsmFoundation.Sdk": "{DOCUMENTED_SDK_VERSION}" }}')
                 elif version != DOCUMENTED_SDK_VERSION:
                     self.add("info", "ASMSLN003", candidate, 0,
                              f"pins AsmFoundation.Sdk {version}; these checks encode {DOCUMENTED_SDK_VERSION}",
@@ -613,7 +654,7 @@ class Linter:
             folder = parent
         self.add("error", "ASMSLN001", project.path, 1,
                  "no global.json above the project names AsmFoundation.Sdk, so the SDK cannot resolve (MSB4236)",
-                 'add global.json: { "msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" } }')
+                 f'add global.json: {{ "msbuild-sdks": {{ "AsmFoundation.Sdk": "{DOCUMENTED_SDK_VERSION}" }} }}')
 
     def check_slnx(self, path: str) -> None:
         """Every .asmproj entry in a .slnx needs the generic MSBuild type GUID.
@@ -654,46 +695,66 @@ class Linter:
             self.add("warning", "ASMPRJ010", p.path, line("OutputType", 0),
                      f"OutputType='{output_type}' is not an AsmSdk kind; it builds a shared library",
                      "Library, StaticLibrary, Exe or Objects")
-        for value, _ in p.prop_entries("AsmDefineConstants"):
-            if "DEBUG" not in value.upper().split(";") and "DEBUG" not in [v.split("=")[0].strip().upper() for v in value.split(";")]:
-                keeps = "$(AsmDefineConstants)" in value
-                self.add("warning", "ASMPRJ001", p.path, line("AsmDefineConstants", 0),
-                         "setting AsmDefineConstants replaces the default DEBUG symbol"
-                         + (" ($(AsmDefineConstants) is still empty in the project body, so this does not keep DEBUG)" if keeps else ""),
-                         '<AsmDefine Include="NAME" /> items add symbols and keep DEBUG')
-                break
-        if p.runtime == "Libc" and p.kind in ("StaticLibrary", "Objects"):
-            self.add("info", "ASMPRJ011", p.path, line("AsmRuntime", 0),
-                     f"AsmRuntime=Libc has no effect on {p.kind}; the project that links this code decides")
-        if p.runtime == "Libc" and p.kind == "Executable" and p.prop("AsmEntryPoint"):
-            self.add("warning", "ASMPRJ012", p.path, line("AsmEntryPoint", 0),
-                     "AsmEntryPoint on a Libc executable drops the SDK's crt1: glibc is never initialized unless your entry calls __libc_start_main",
-                     "remove AsmEntryPoint and define main")
-        for value, condition in p.prop_entries("AsmLinkFlags"):
+        # 0.1.0's own names: 0.2.0 fails the build with ASM0100-ASM0108, one error per setting.
+        for name, replacement in REMOVED_SETTINGS.items():
+            if p.prop_entries(name):
+                self.add("error", "ASMPRJ013", p.path, line(name, 0),
+                         f"{name} was removed in AsmFoundation.Sdk 0.2.0: the build fails with an ASM01xx error",
+                         f"use {replacement}")
+        if p.item_entries("AsmDefine"):
+            self.add("error", "ASMPRJ013", p.path, line("AsmDefine", 0),
+                     "AsmDefine items were removed in AsmFoundation.Sdk 0.2.0: the build fails with an ASM01xx error",
+                     "list the symbols in DefineConstants (NAME or NAME=VALUE, semicolon-separated)")
+        if p.libc_only and p.kind in ("StaticLibrary", "Objects"):
+            self.add("info", "ASMPRJ011", p.path, line("TargetFramework", 0),
+                     f"TargetFramework=libc links nothing into {p.kind}, but it says the code needs glibc: "
+                     "a freestanding project cannot reference this one (NU1201)",
+                     "keep it when the code calls libc; otherwise freestanding (or TargetFrameworks=freestanding;libc) lets every project use it")
+        if p.runtime == "Libc" and p.kind == "Executable" and p.prop("StartupObject"):
+            self.add("warning", "ASMPRJ012", p.path, line("StartupObject", 0),
+                     "StartupObject on a libc executable drops the SDK's crt1: glibc is never initialized unless your entry calls __libc_start_main",
+                     "remove StartupObject and define main")
+        for item in p.item_entries("LinkerArg"):
+            value, condition = item.get("Include", ""), item.get("Condition", "")
             if "$ORIGIN" in value and "IsOSPlatform" not in condition and "'$ORIGIN'" not in value:
-                self.add("warning", "ASMPRJ006", p.path, line("AsmLinkFlags", 0),
+                self.add("warning", "ASMPRJ006", p.path, line("LinkerArg", 0),
                          "$ORIGIN unquoted: Linux/macOS build machines run the link through /bin/sh, which expands it to nothing",
-                         "set it per OS: -rpath $ORIGIN on Windows, -rpath '$ORIGIN' elsewhere (IsOSPlatform conditions)")
+                         "add it per OS: -rpath $ORIGIN on Windows, -rpath '$ORIGIN' elsewhere (IsOSPlatform conditions on the LinkerArg items)")
         props_file = self._directory_build_props(p)
         flags = " ".join(v for v, _ in p.prop_entries("AsmFlags")) + " " + " ".join(
             v for v, _ in (props_file.prop_entries("AsmFlags") if props_file else []))
         if "-Xvc" not in flags:
             self.add("info", "ASMPRJ008", p.path, 0,
-                     "NASM messages are not MSBuild diagnostics in 0.1.0 (only MSB3073 is counted; -v:q hides NASM's line)",
+                     "NASM messages are not MSBuild diagnostics by default (only MSB3073 is counted; -v:q hides NASM's line)",
                      "<AsmFlags>-Xvc</AsmFlags>, best in Directory.Build.props under Condition=\"'$(UsingAsmFoundationSdk)' == 'true'\"")
-        link_flags = " ".join(v for v, _ in p.prop_entries("AsmLinkFlags")) + " " + " ".join(
-            v for v, _ in (props_file.prop_entries("AsmLinkFlags") if props_file else []))
+        link_flags = " ".join(i.get("Include", "") for i in p.item_entries("LinkerArg")) + " " + " ".join(
+            i.get("Include", "") for i in (props_file.item_entries("LinkerArg") if props_file else []))
         if p.kind == "SharedLibrary" and "-z defs" not in link_flags and "--no-undefined" not in link_flags:
             self.add("info", "ASMPRJ007", p.path, 0,
                      "a shared library links with undefined symbols; a misspelled extern fails only when the library loads",
-                     "<AsmLinkFlags>-z defs</AsmLinkFlags>")
+                     '<LinkerArg Include="-z defs" />')
         referenced = self.references(p)
+        # NuGet names each project of a restore graph by its PackageId, which defaults to the
+        # AssemblyName: two projects of one graph with the same name fail restore.
+        names: Dict[str, List[Project]] = {}
+        for member in [p] + referenced:
+            names.setdefault(member.package_id.lower(), []).append(member)
+        for same in names.values():
+            if len(same) > 1:
+                self.add("error", "ASMPRJ014", p.path, line("ProjectReference", 0),
+                         f"{', '.join(os.path.basename(m.path) for m in same)} are all named '{same[0].package_id}' to NuGet "
+                         "(PackageId defaults to AssemblyName): restore fails with \"Ambiguous project name\"",
+                         "give each project its own <PackageId>; the file names still follow AssemblyName")
         for ref in referenced:
+            if "freestanding" in p.frameworks and ref.libc_only and ref.kind != "Objects":
+                self.add("error", "ASMREF003", p.path, line("ProjectReference", 0),
+                         f"a freestanding build references {os.path.basename(ref.path)}, which targets only libc: restore fails with NU1201",
+                         "make this project libc, or let the reference also build freestanding (TargetFrameworks=freestanding;libc)")
             if ref.kind == "Objects":
                 self.add("error", "ASMREF002", p.path, line("ProjectReference", 0),
-                         f"reference to {os.path.basename(ref.path)} (OutputType=Objects): 0.1.0 passes its object paths relative to the wrong project, and the link fails with 'cannot open .../x.o'",
+                         f"reference to {os.path.basename(ref.path)} (OutputType=Objects): AsmSdk passes its object paths relative to the wrong project (a known issue), and the link fails with 'cannot open .../x.o'",
                          "make the referenced project a StaticLibrary")
-            elif p.kind == "Executable" and p.runtime == "Freestanding" and not ref.produces_static and ref.kind == "SharedLibrary":
+            elif p.kind == "Executable" and "freestanding" in p.frameworks and not ref.produces_static and ref.kind == "SharedLibrary":
                 self.add("error", "ASMREF001", p.path, line("ProjectReference", 0),
                          f"a freestanding executable links -static, but {os.path.basename(ref.path)} produces only a .so: 'attempted static link of dynamic object'",
                          f"in {os.path.basename(ref.path)}: <AsmProduceStaticLibrary>true</AsmProduceStaticLibrary> or OutputType StaticLibrary")
@@ -714,7 +775,7 @@ class Linter:
     def _directory_build_props(self, project: Project) -> Optional[Project]:
         """The Directory.Build.props MSBuild imports for a project (the nearest one above it).
 
-        Solution-wide asm settings (AsmFlags -Xvc, AsmLinkFlags -z defs) usually live there, so
+        Solution-wide asm settings (AsmFlags -Xvc, a LinkerArg -z defs) usually live there, so
         recommendations must look at it before suggesting them for every project.
 
         Args:
@@ -790,7 +851,7 @@ class Linter:
         has_packages = bool(p.items.get("PackageReference"))
         included_asm: Set[str] = set()
         entry_found = False
-        entry = p.prop("AsmEntryPoint") or ("main" if p.runtime == "Libc" and p.kind == "Executable" else "_start")
+        entry = p.prop("StartupObject") or ("main" if p.runtime == "Libc" and p.kind == "Executable" else "_start")
         for path in sources:
             info = infos.get(path)
             if info is None:
@@ -844,7 +905,7 @@ class Linter:
                              f"'{name}' is not defined in this project, its references"
                              + (" or the libc stub" if p.runtime == "Libc" else "")
                              + ": a shared library links anyway and fails at load time if nothing provides it",
-                             "-z defs in AsmLinkFlags turns this into a link error")
+                             '<LinkerArg Include="-z defs" /> turns this into a link error')
         for path in sorted(included_asm):
             if path in sources:
                 info = infos.get(path) or self.source(path)

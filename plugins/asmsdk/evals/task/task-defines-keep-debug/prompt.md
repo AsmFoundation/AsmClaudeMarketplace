@@ -5,12 +5,12 @@ allowed_tools: [Read, Glob, Grep, Skill, Write, Edit]
 tags: [task, task-defines-keep-debug]
 ---
 
-Our asm library project `Fast/Fast.asmproj` (AsmFoundation.Sdk 0.1.0) currently reads:
+Our asm library project `Fast/Fast.asmproj` (AsmFoundation.Sdk 0.2.0) currently reads:
 
 ```xml
 <Project Sdk="AsmFoundation.Sdk">
   <PropertyGroup>
-    <AsmLibraryName>fast</AsmLibraryName>
+    <AssemblyName>fast</AssemblyName>
   </PropertyGroup>
 </Project>
 ```

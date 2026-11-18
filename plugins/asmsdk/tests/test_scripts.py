@@ -1,6 +1,6 @@
 """Tests for the asmsdk skill's scripts (check_asmproj.py, new_asmproj.py, inspect_elf.py).
 
-Why these tests: the scripts encode facts measured against AsmFoundation.Sdk 0.1.0, NASM 3.02
+Why these tests: the scripts encode facts measured against AsmFoundation.Sdk 0.2.0, NASM 3.02
 and ld.lld 23.1.5. Each linter check gets a fixture that must trigger it (so a regression in a
 check is caught) and a clean project that must not (so false errors are caught). The fixtures
 are generated into a temporary folder from the dictionaries below, which keeps them readable
@@ -67,14 +67,36 @@ def proj(props: str = "", items: str = "") -> str:
 #: Fixture tree: relative path -> content. One folder per scenario; the expected findings are
 #: in EXPECTED below. The tree has its own global.json so ASMSLN001 never fires by accident.
 FIXTURES: Dict[str, str] = {
-    "global.json": '{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.1.0" } }\n',
+    "global.json": '{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.2.0" } }\n',
     # A correct shared library: must produce no error or warning.
-    "good/Good.asmproj": proj("<AsmLibraryName>good</AsmLibraryName><AsmFlags>-Xvc</AsmFlags><AsmLinkFlags>-z defs</AsmLinkFlags>"),
+    "good/Good.asmproj": proj("<AssemblyName>good</AssemblyName><AsmFlags>-Xvc</AsmFlags>", '<LinkerArg Include="-z defs" />'),
     "good/include/good.inc": "%ifndef GOOD_INC\n%define GOOD_INC\nextern good_fn\n%endif\n",
     "good/good.asm": '%include "good.inc"\n' + GOOD_FN.format(n="good_fn"),
-    # AsmDefineConstants that "appends" but loses DEBUG.
-    "defines/Defines.asmproj": proj("<AsmDefineConstants>$(AsmDefineConstants);FOO</AsmDefineConstants>"),
+    # 0.2.0's DefineConstants: the SDK appends DEBUG/RELEASE and FREESTANDING/LIBC after the
+    # project body, so setting it drops nothing (0.1.0's AsmDefineConstants footgun is gone).
+    "defines/Defines.asmproj": proj("<DefineConstants>FOO;LEVEL=3</DefineConstants>"),
     "defines/a.asm": GOOD_FN.format(n="d"),
+    # 0.1.0's own names: 0.2.0 fails the build with ASM0100-ASM0108.
+    "oldnames/OldNames.asmproj": proj("<AsmLibraryName>old</AsmLibraryName><AsmRuntime>Libc</AsmRuntime>"
+                                      "<AsmDefineConstants>FOO</AsmDefineConstants><AsmLinkFlags>-z defs</AsmLinkFlags>",
+                                      '<AsmDefine Include="BAR" />'),
+    "oldnames/a.asm": GOOD_FN.format(n="o"),
+    # Two projects of one restore graph named alike: PackageId defaults to AssemblyName.
+    "ambig/core/Core.asmproj": proj("<OutputType>StaticLibrary</OutputType><AssemblyName>engine</AssemblyName>"),
+    "ambig/core/core.asm": GOOD_FN.format(n="core_fn"),
+    "ambig/native/Native.asmproj": proj("<AssemblyName>engine</AssemblyName>", '<ProjectReference Include="../core/Core.asmproj" />'),
+    "ambig/native/native.asm": GOOD_FN.format(n="native_fn"),
+    # The same with a PackageId each: must not error.
+    "ambig_ok/core/Core.asmproj": proj("<OutputType>StaticLibrary</OutputType><AssemblyName>engine2</AssemblyName><PackageId>Acme.Engine</PackageId>"),
+    "ambig_ok/core/core.asm": GOOD_FN.format(n="core2_fn"),
+    "ambig_ok/native/Native.asmproj": proj("<AssemblyName>engine2</AssemblyName><PackageId>Acme.Engine.Native</PackageId>",
+                                           '<ProjectReference Include="../core/Core.asmproj" />'),
+    "ambig_ok/native/native.asm": GOOD_FN.format(n="native2_fn"),
+    # A freestanding project referencing a libc-only one (NU1201 at restore).
+    "fsref/lib/LibcOnly.asmproj": proj("<OutputType>StaticLibrary</OutputType><TargetFramework>libc</TargetFramework>"),
+    "fsref/lib/lib.asm": GOOD_FN.format(n="libc_only_fn"),
+    "fsref/app/App.asmproj": proj("<OutputType>StaticLibrary</OutputType>", '<ProjectReference Include="../lib/LibcOnly.asmproj" />'),
+    "fsref/app/app.asm": GOOD_FN.format(n="fs_app_fn"),
     # An include folder outside the project, not tracked.
     "shared/shared.inc": "%define SHARED 1\n",
     "extinc/ExtInc.asmproj": proj(items='<AsmIncludeDirectory Include="../shared/" />'),
@@ -95,13 +117,13 @@ FIXTURES: Dict[str, str] = {
     "sharedlib/lib.asm": GOOD_FN.format(n="lib_value"),
     "exeshared/App.asmproj": proj("<OutputType>Exe</OutputType>", '<ProjectReference Include="../sharedlib/SharedLib.asmproj" />'),
     "exeshared/main.asm": "default rel\nextern lib_value\nsection .text\nglobal _start:function\n_start:\n    call lib_value\n    mov eax, 231\n    syscall\n" + NOTE,
-    # A reference to an Objects project (0.1.0 bug).
+    # A reference to an Objects project (a known issue in 0.1.0 and 0.2.0).
     "objs/Objs.asmproj": proj("<OutputType>Objects</OutputType>"),
     "objs/o.asm": GOOD_FN.format(n="objs_value"),
     "objref/App.asmproj": proj("<OutputType>Exe</OutputType>", '<ProjectReference Include="../objs/Objs.asmproj" />'),
     "objref/main.asm": "default rel\nextern objs_value\nsection .text\nglobal _start:function\n_start:\n    call objs_value\n    mov eax, 231\n    syscall\n" + NOTE,
     # Unquoted $ORIGIN without an OS condition.
-    "rpath/Rpath.asmproj": proj("<AsmLinkFlags>-rpath $ORIGIN</AsmLinkFlags>"),
+    "rpath/Rpath.asmproj": proj(items='<LinkerArg Include="-rpath $ORIGIN" />'),
     "rpath/a.asm": GOOD_FN.format(n="r"),
     # Every PIC mistake in one shared library.
     "pic/Pic.asmproj": proj(),
@@ -126,11 +148,11 @@ FIXTURES: Dict[str, str] = {
     "subinc/SubInc.asmproj": proj(),
     "subinc/src/sub/a.asm": '%include "b.inc"\n' + GOOD_FN.format(n="s"),
     "subinc/src/sub/b.inc": "%define B 1\n",
-    # A Libc executable calling a libc function the stub does not list.
-    "libcexe/LibcExe.asmproj": proj("<OutputType>Exe</OutputType><AsmRuntime>Libc</AsmRuntime>"),
+    # A libc executable calling a libc function the stub does not list.
+    "libcexe/LibcExe.asmproj": proj("<OutputType>Exe</OutputType><TargetFramework>libc</TargetFramework>"),
     "libcexe/main.asm": "default rel\nextern strsignal, printf\nsection .text\nglobal main:function\nmain:\n    push rbx\n    call strsignal wrt ..plt\n    call printf wrt ..plt\n    pop rbx\n    ret\n" + NOTE,
     # The same with AsmLibcSymbol: must not error.
-    "libcexe_ok/LibcExeOk.asmproj": proj("<OutputType>Exe</OutputType><AsmRuntime>Libc</AsmRuntime>", '<AsmLibcSymbol Include="strsignal" />'),
+    "libcexe_ok/LibcExeOk.asmproj": proj("<OutputType>Exe</OutputType><TargetFramework>libc</TargetFramework>", '<AsmLibcSymbol Include="strsignal" />'),
     "libcexe_ok/main.asm": "default rel\nextern strsignal\nsection .text\nglobal main:function\nmain:\n    push rbx\n    call strsignal wrt ..plt\n    pop rbx\n    ret\n" + NOTE,
     # An executable without its entry symbol.
     "noentry/NoEntry.asmproj": proj("<OutputType>Exe</OutputType>"),
@@ -143,7 +165,11 @@ FIXTURES: Dict[str, str] = {
 #: they are recommendations whose presence depends on the project's settings).
 EXPECTED: Dict[str, Set[str]] = {
     "good/Good.asmproj": set(),
-    "defines/Defines.asmproj": {"ASMPRJ001"},
+    "defines/Defines.asmproj": set(),
+    "oldnames/OldNames.asmproj": {"ASMPRJ013"},
+    "ambig/native/Native.asmproj": {"ASMPRJ014"},
+    "ambig_ok/native/Native.asmproj": set(),
+    "fsref/app/App.asmproj": {"ASMREF003"},
     "extinc/ExtInc.asmproj": {"ASMPRJ002"},
     "extinc_ok/ExtIncOk.asmproj": set(),
     "dup/Dup.asmproj": {"ASMSRC010"},
@@ -256,11 +282,11 @@ class NewAsmprojTests(unittest.TestCase):
     """Scaffolds are lint-clean, never overwrite, and register in the .slnx."""
 
     def test_every_kind_is_lint_clean(self) -> None:
-        """All kinds and runtimes scaffold into one solution with no error or warning."""
+        """All kinds and target frameworks scaffold into one solution with no error or warning."""
         with tempfile.TemporaryDirectory() as tmp:
-            cases = [["Lib", "--lib-name", "fastmath"], ["Static", "--kind", "static", "--package-id", "Acme.S"],
-                     ["App", "--kind", "exe"], ["LApp", "--kind", "exe", "--runtime", "libc"],
-                     ["LLib", "--runtime", "libc", "--package-id", "Acme.L", "--version", "2.0.0"],
+            cases = [["Lib", "--assembly-name", "fastmath"], ["Static", "--kind", "static", "--package-id", "Acme.S"],
+                     ["App", "--kind", "exe"], ["LApp", "--kind", "exe", "--framework", "libc"],
+                     ["LLib", "--framework", "libc", "--package-id", "Acme.L", "--version", "2.0.0"],
                      ["Objs", "--kind", "objects"]]
             for case in cases:
                 with contextlib.redirect_stdout(io.StringIO()):
@@ -273,7 +299,7 @@ class NewAsmprojTests(unittest.TestCase):
                 slnx = f.read()
             self.assertEqual(6, slnx.count(new_asmproj.ASMPROJ_TYPE_GUID))
             with open(os.path.join(tmp, "global.json"), encoding="utf-8") as f:
-                self.assertEqual("0.1.0", json.load(f)["msbuild-sdks"]["AsmFoundation.Sdk"])
+                self.assertEqual("0.2.0", json.load(f)["msbuild-sdks"]["AsmFoundation.Sdk"])
 
     def test_never_overwrites(self) -> None:
         """A second run keeps every file and leaves its content unchanged."""
@@ -301,7 +327,7 @@ class NewAsmprojTests(unittest.TestCase):
             with open(os.path.join(tmp, "global.json"), encoding="utf-8") as f:
                 data = json.load(f)
             self.assertEqual("10.0.100", data["sdk"]["version"])
-            self.assertEqual("0.1.0", data["msbuild-sdks"]["AsmFoundation.Sdk"])
+            self.assertEqual("0.2.0", data["msbuild-sdks"]["AsmFoundation.Sdk"])
 
 
 class InspectElfTests(unittest.TestCase):

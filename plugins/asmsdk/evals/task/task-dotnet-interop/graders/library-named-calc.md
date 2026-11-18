@@ -3,7 +3,7 @@ type: regex
 target:
   source: file
   path: Calc.Native/Calc.Native.asmproj
-pattern: '<(AsmLibraryName|AssemblyName)>\s*calc\s*</'
+pattern: '<AssemblyName>\s*calc\s*</'
 ---
 
-The output is libcalc.so (AsmLibraryName or AssemblyName = calc).
+The output is libcalc.so (AssemblyName = calc; 0.2.0 removed AsmLibraryName).

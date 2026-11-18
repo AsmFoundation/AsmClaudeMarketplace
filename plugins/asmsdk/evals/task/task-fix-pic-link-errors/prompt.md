@@ -5,7 +5,7 @@ allowed_tools: [Read, Glob, Grep, Skill, Write, Edit]
 tags: [task, task-fix-pic-link-errors]
 ---
 
-`dotnet build` of our shared library project `Hash/Hash.asmproj` (AsmFoundation.Sdk 0.1.0, default settings, builds libHash.so) fails at link time:
+`dotnet build` of our shared library project `Hash/Hash.asmproj` (AsmFoundation.Sdk 0.2.0, default settings, builds libHash.so) fails at link time:
 
 ```
 lld : error : relocation R_X86_64_PC32 cannot be used against symbol 'mix64'; recompile with -fPIC

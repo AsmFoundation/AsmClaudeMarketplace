@@ -5,4 +5,4 @@ allowed_tools: [Read, Glob, Grep, Skill]
 tags: [trigger, should-trigger]
 ---
 
-I added <AsmDefineConstants>USE_AVX2</AsmDefineConstants> to my asm project and now the debug-only logging code vanished from Debug builds. Why, and what should I write instead?
+I upgraded my asm project to AsmFoundation.Sdk 0.2.0 and the build now fails with ASM0102 on <AsmDefineConstants>USE_AVX2</AsmDefineConstants>. What do I write instead, and do I still get DEBUG in Debug builds?

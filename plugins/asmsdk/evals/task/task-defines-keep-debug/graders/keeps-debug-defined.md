@@ -3,7 +3,7 @@ type: regex
 target:
   source: file
   path: Fast/Fast.asmproj
-pattern: '<AsmDefine\s+Include="USE_AVX2(=1)?"|<AsmDefineConstants[^>]*>[^<]*\bDEBUG\b'
+pattern: '<DefineConstants[^>]*>[^<]*\bUSE_AVX2(=1)?\b'
 ---
 
-DEBUG survives: an AsmDefine item, or an AsmDefineConstants value that names DEBUG itself (the SDK applies its DEBUG default only when the property is empty, after the project body).
+The symbol is added through DefineConstants, 0.2.0's property: the SDK appends DEBUG or RELEASE (and FREESTANDING or LIBC) after the project body, so Debug keeps DEBUG. build_check.py builds both configurations to prove it.

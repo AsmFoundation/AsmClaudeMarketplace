@@ -1,4 +1,4 @@
-# The toolchain: AsmFoundation.Sdk 0.1.0
+# The toolchain: AsmFoundation.Sdk 0.2.0
 
 AsmSdk needs three tools: an assembler (NASM), an ELF linker and an archiver. By default
 they come from a NuGet package, so a build machine needs only the .NET SDK.
@@ -21,7 +21,7 @@ they come from a NuGet package, so a build machine needs only the .NET SDK.
   NuGet extracts that package into the global packages folder: `~/.nuget/packages`, or
   `$NUGET_PACKAGES` when set.
 - **Version:** `AsmToolchainVersion` defaults to the version the SDK release was tested
-  with (`0.1.0` for SDK 0.1.0, read from the SDK's generated `AsmFoundation.Sdk.Version.props`).
+  with (`0.1.0` for SDK 0.2.0, as for 0.1.0, read from the SDK's generated `AsmFoundation.Sdk.Version.props`).
 - **What the package holds** (`tools/`), toolchain 0.1.0:
 
   | Tool | Version | Run as |
@@ -134,7 +134,8 @@ For inspecting outputs or reproducing a build step by hand:
 
 ## Provenance and licenses
 
-- **How the packages are built:** the AsmSdk repository's `toolchain/fetch.py` builds the
+- **How the packages are built:** the AsmSdk repository's `toolchain/fetch.cs` (a .NET 10
+  file-based app, `dotnet run toolchain/fetch.cs -- --rid <rid>`) builds the
   toolchain packages from pins in `toolchain/versions.json`:
   - Windows gets the official NASM binary;
   - Linux (statically) and macOS get NASM built from the official source;
