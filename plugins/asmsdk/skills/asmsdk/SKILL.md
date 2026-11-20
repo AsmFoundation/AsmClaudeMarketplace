@@ -269,6 +269,44 @@ private static partial uint CrcUpdate(uint crc, ReadOnlySpan<byte> data, nuint l
 - **A plain `global` is not exported from a Windows DLL:** use `FUNCTION`, or an
   `ExportsFile`; otherwise .NET fails with `EntryPointNotFoundException` on Windows only.
 
+**Where the binaries go: `BinariesCopyPath`** (build and publish alike), on the reference, as
+the project's property, or on a `PackageReference` to an asm package:
+
+```xml
+<ProjectReference Include="../Crc/Crc.asmproj" BinariesCopyPath="native/{rid}" />
+<PropertyGroup><BinariesCopyPath>RidFolders</BinariesCopyPath></PropertyGroup>
+```
+
+- **Values:** `Auto` (the default: `runtimes/<rid>/native/` portable, the app folder for one
+  RID), `Runtimes`, `AppFolder`, `RidFolders` (`<rid>/`), or a folder inside the output with an
+  optional `{rid}` (the RID each file was built for). Absolute, `..`, `< > : " | ? *` or another
+  placeholder: `ASM0043`.
+- **Which applies:** the reference's attribute, then the property, then the explicit choice of
+  a .NET library the asm library comes through (so the attribute on a wrapper's reference
+  shapes the app too), then `Auto`. Two wrappers that disagree: `ASM0046` (warning).
+- **A folder without `{rid}`** in a portable build: `win-x64` and `win-arm64` both give
+  `crc.dll`, so the build stops with `ASM0044`. Add `{rid}`, or narrow the reference's
+  `RuntimeIdentifiers` to one RID per OS. Fine in a build for one RID (`native/crc.dll`).
+- **Loading needs no code:** `deps.json` lists each library with `localPath` (`runtimeTargets`
+  portable, `native` for one RID); the host loads from any such folder, framework-dependent
+  and self-contained (*verified* on Windows and Linux). A C# project for .NET 5+ that puts a
+  library outside the app folder also gets `obj/.../AsmNativeLibraryLoader.g.cs`, a
+  `ResolvingUnmanagedDll` fallback that runs after .NET's own probing and any resolver of
+  yours: it is how NativeAOT (no `deps.json`) finds `native/crc.dll` (*verified*).
+  `AsmGenerateNativeLibraryLoader=false` turns it off.
+- **`PrivateAssets="all"` on the asm reference of a .NET library** packs every RID's binary
+  into that library's own package (`runtimes/<rid>/native/`, plus `buildTransitive/<tfm>/<id>.targets`
+  for `BinariesCopyPath`) and drops the dependency on the asm package. The reference then does
+  not flow to referencing projects either, nor do AsmSdk's targets. An app that references
+  the library by project:
+  - gets every RID's files where the library's `BinariesCopyPath` put them (the library hands
+    them on laid out);
+  - gets no `deps.json` entries;
+  - loads through the library's generated loader.
+
+  *Verified* on Windows and Linux, in builds and in a single-file publish, where the files
+  stay beside the bundle.
+
 See `references/interop.md` for marshalling, publishing, Python `ctypes`, C headers, and tests.
 
 ### Link one asm project into another
@@ -314,13 +352,21 @@ each target framework: netstandard1.0 for `freestanding`, netstandard2.0 for `li
 - `runtimes/<rid>/native/`: the shared library (`nativeassets/<fw>/` when the project
   targets both), which a `.csproj` consumer gets by NuGet's own rules;
 - a generated `build/<fw>/` and `buildTransitive/<fw>/` `<PackageId>.props`, which gives an
-  asm consumer its RID's build by the RID graph, or `ASM0060`.
+  asm consumer its RID's build by the RID graph, or `ASM0060`;
+- with a shared library, `<PackageId>.targets` beside them: `BinariesCopyPath` for the
+  package's .NET consumers, in plain MSBuild (the package does not depend on the SDK).
 
 The implicit `AsmFoundation.Sdk` dependency is removed from the `.nuspec` (`ASM0050`).
 
 - **Public include files must live in `include/`.** A project without an `include/` folder
   packs **no** include files, and its consumers' `%include` fails. A `ProjectReference`
   would still have worked, because it uses the project folder (*verified*).
+- **A static library linked in is still a package dependency.** `dotnet pack` makes every
+  `ProjectReference` a dependency. So a shared library that links
+  `../CrcCore/CrcCore.asmproj` depends on that project's package. When that package was never
+  published, every consumer fails restore with `NU1101`. Mark such a reference
+  `PrivateAssets="all"`: its code is inside already (*verified*). A `StaticLibrary` package
+  keeps the dependency: its consumers link both archives.
 - **Central Package Management works,** with `Directory.Packages.props` and a
   `PackageReference` that has no version (*verified*).
 - **Hide what a linked package's static library exports:** `HIDDEN_FUNCTION` in it, an
@@ -456,7 +502,9 @@ templates are in `references/nasm-for-asmsdk.md` and `references/platforms.md`.
   suitable `AsmLinkerCommand`), `ASM0006` (no toolchain package for this build machine),
   `ASM0007`, `ASM0010`-`ASM0012` (RIDs), `ASM0015` (freestanding macOS program),
   `ASM0020`-`ASM0024` (source selection), `ASM0030` (`ExportsFile`), `ASM0040`-`ASM0042`
-  (.NET consumers), `ASM0050`, `ASM0060`, `ASM0061` (packages), `ASM0070` (C library
+  (.NET consumers), `ASM0043`-`ASM0046` (`BinariesCopyPath`: a bad value, two files on one
+  path, the loader not written, two wrappers that disagree), `ASM0050`, `ASM0060`, `ASM0061`
+  (packages), `ASM0070` (C library
   stand-in), `ASM0080`-`ASM0082` (image checks), `ASM0100`-`ASM0108` (0.1.0 settings).
   `references/project-reference.md` has each one's cause and fix.
 
@@ -522,6 +570,10 @@ Every row was reproduced with an AsmSdk release.
 | `MSB4025 … ProjectType '' not found` | `.slnx` entry without a type | add the type GUID |
 | `ASM0006` on an Intel Mac or Alpine | no toolchain package for that build machine | `AsmToolchain=System`, or `AsmToolchainDirectory` |
 | `ASM0040` in a RID-specific .NET build | an asm reference lists no RID that serves the app's RID (also for an optional component) | add the RID to the asm project, or build the app portable |
+| `ASM0044` with `BinariesCopyPath="native"` | a portable build of several RIDs of one OS puts two `x.dll` (or `libx.so`) in one folder | `native/{rid}`, or one RID per OS on the reference |
+| The app's folder holds two layouts of one library after `dotnet build -o out` | `-o` is every project's output folder, so a wrapper library in between copies its own layout there too | `dotnet publish -o` (no such effect), or the app's own `OutDir` |
+| `bin/Debug/net10.0/win-x64/` holds both a RID's library and a whole `-r win-x64` build | `RidFolders` in a portable build uses the same folder names as `dotnet build -r` | `native/{rid}` when you also build for one RID |
+| `DllNotFoundException` under NativeAOT with a custom folder | no generated loader: a VB or F# project, below .NET 5, or `AsmGenerateNativeLibraryLoader=false` | keep the app folder for NativeAOT, or a resolver of your own |
 
 ## References: read the one the task needs
 

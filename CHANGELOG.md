@@ -18,6 +18,13 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     - DLL exports;
     - each OS's C library;
     - .NET consumers by RID, with publishing (single file, NativeAOT);
+    - `BinariesCopyPath` (where a .NET project keeps the asm libraries: presets or a folder
+      with `{rid}`, on a reference, a `PackageReference` or as a property), the generated
+      fallback loader for NativeAOT, and `PrivateAssets="all"` packing the binaries into a
+      .NET library's package (and what an app that references such a library by project
+      gets);
+    - a static library linked into a packed library, which stays a package dependency
+      (`NU1101` for every consumer) unless its reference is `PrivateAssets="all"`;
     - packages per RID;
     - the `ASM0010`-`ASM0082` errors;
     - 0.2.0's removed `AsmTargetRid` and `AsmFormat`.
