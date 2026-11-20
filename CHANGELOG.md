@@ -6,6 +6,46 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`asmsdk` 0.3.0, for AsmFoundation.Sdk 0.3.0:** seven runtime identifiers (x86-64 and
+  ARM64 on Windows, Linux and macOS, plus musl on x64), NASM for x64 and GNU syntax for
+  ARM64. It is released together with the SDK, and has no compatibility layer either:
+  - **the skill** is rewritten for RIDs. It covers:
+    - one source for every OS through `asmsdk.inc` and `asmsdk-gnu.inc`;
+    - the per-OS NASM rules: what macho64 and win64 reject, measured directive by
+      directive;
+    - DLL exports;
+    - each OS's C library;
+    - .NET consumers by RID, with publishing (single file, NativeAOT);
+    - packages per RID;
+    - the `ASM0010`-`ASM0082` errors;
+    - 0.2.0's removed `AsmTargetRid` and `AsmFormat`.
+  - **the references** were regenerated from the 0.3.0 documentation site, keeping the
+    *verified* markers whose facts did not change. A new `platforms.md` covers the RIDs, the
+    source selection and the helper includes. Data that no image may export gets a
+    declaration per OS, measured with libraries for three RIDs;
+  - **`check_asmproj.py`** has 45 checks and judges each source for the OSes it builds:
+    - the project's RIDs, or its referencing projects' RIDs;
+    - the file-name qualifier, chosen as the SDK chooses;
+    - the `%ifdef WINDOWS`/`LINUX`/`MACOS` guards.
+    New: `ASMPRJ015`-`018` (RIDs, target framework), `ASMSRC014`-`017` (source selection),
+    `ASMSRC018`-`020` (what each format's NASM rejects), `ASMSRC021` (a plain `global` no DLL
+    exports, unless the other OSes hide it), `ASMSRC022` (a symbol hidden on one OS and
+    exported on another). The C library check reads each OS's list from the SDK package.
+    `-Bsymbolic` retired the within-library PLT findings and `ASMREF002`;
+  - **`new_asmproj.py`** writes `RuntimeIdentifiers` (every RID the kind can build, or
+    `--rids`), and starter sources for both CPUs that assemble and link on every OS.
+    Every kind and framework was built for all its RIDs;
+  - **`inspect_elf.py` is now `inspect_output.py`:** ELF, PE and Mach-O images and static
+    libraries;
+  - **the evals** name 0.3.0, and `build_check.py` builds every RID a task names. It reads
+    each library's exports (ELF, PE, Mach-O) and has a `--controls` self-test.
+    `task-port-to-every-os` replaces `task-fix-pic-link-errors`, whose link errors 0.3.0's
+    `-Bsymbolic` removed. New `evals/controls/` hold a right and wrong answers per task, and
+    `tests/test_evals.py` checks graders, prompts and the linter against them in CI. The
+    committed results are still plugin 0.1.0's against SDK 0.1.0.
+
 ## 2026-11-18
 
 ### Changed

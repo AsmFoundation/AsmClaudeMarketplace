@@ -1,0 +1,6 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64;win-x64;osx-x64</RuntimeIdentifiers>
+    <AssemblyName>calc</AssemblyName>
+  </PropertyGroup>
+</Project>

@@ -6,4 +6,4 @@ target:
 pattern: '<ProjectReference\s+Include="[^"]*Calc\.Native\.asmproj"'
 ---
 
-The app references the asm project, which copies libcalc.so next to it.
+The app references the asm project, which puts each RID's library in the app's output (runtimes/<rid>/native/ for a portable app, where the .NET host picks the one for the machine).

@@ -1,0 +1,9 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,8 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <AssemblyName>fast</AssemblyName>
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+    <!-- The SDK appends DEBUG or RELEASE (and its platform symbols) after this. -->
+    <DefineConstants>$(DefineConstants);USE_AVX2=1</DefineConstants>
+  </PropertyGroup>
+</Project>

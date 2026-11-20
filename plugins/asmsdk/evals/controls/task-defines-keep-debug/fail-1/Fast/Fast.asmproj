@@ -1,0 +1,8 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Negative control: 0.1.0's property, which 0.2.0 and later stop on (ASM0102). -->
+  <PropertyGroup>
+    <AssemblyName>fast</AssemblyName>
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+    <AsmDefineConstants>USE_AVX2=1</AsmDefineConstants>
+  </PropertyGroup>
+</Project>

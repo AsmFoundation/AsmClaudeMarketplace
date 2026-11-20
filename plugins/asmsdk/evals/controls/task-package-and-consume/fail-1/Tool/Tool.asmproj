@@ -1,0 +1,9 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <!-- Negative control: no RuntimeIdentifiers, which 0.3.0 stops on (ASM0010). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Acme.Crc" Version="1.2.0" />
+  </ItemGroup>
+</Project>

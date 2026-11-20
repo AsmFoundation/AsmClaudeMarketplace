@@ -10,7 +10,7 @@
     {
       "name": "asmsdk",
       "source": "./plugins/asmsdk",
-      "description": "AsmSdk (AsmFoundation.Sdk): build, reference, package and release x86-64 assembly as .asmproj projects with dotnet build, NuGet and MSBuild. Covers every SDK property, item, target and error, the NASM rules that decide whether code links, .NET and Python interop, CI and releases, plus scripts that scaffold projects, lint them for known footguns and inspect the ELF outputs.",
+      "description": "AsmSdk (AsmFoundation.Sdk): build, reference, package and release x86-64 and ARM64 assembly for Windows, Linux and macOS as .asmproj projects with dotnet build, NuGet and MSBuild. Covers the seven runtime identifiers, every SDK property, item, target and error, the per-OS NASM rules that decide whether code assembles and links, .NET and Python interop, CI and releases, plus scripts that scaffold projects for every RID, lint them for known footguns per OS and inspect the ELF, PE and Mach-O outputs.",
       "category": "development",
       "author": {
         "name": "AsmFoundation"

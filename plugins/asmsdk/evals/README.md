@@ -1,8 +1,8 @@
 # asmsdk evaluation
 
 This folder holds a [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals)
-suite for the `asmsdk` plugin, plus a build check that runs the real AsmSdk on what the agent
-wrote, and the committed results.
+suite for the `asmsdk` plugin and a build check that runs the real AsmSdk on what the agent
+wrote. It also holds the controls that prove both judges, and the committed results.
 
 ## What is measured
 
@@ -11,9 +11,11 @@ wrote, and the committed results.
 | `trigger/` | 10 should-trigger + 10 near misses | Does Claude load the skill when, and only when, a request is about AsmSdk? | `tool_used: Skill` (`min: 0, max: 0` for near misses) |
 | `task/` | 4 tasks, run **with** and **without** the plugin | Does the plugin make Claude's answer correct? | free `regex` / `file_exists` graders over the files written, plus `build_check.py` |
 
-**Should-trigger requests** mix explicit ones (an `.asmproj`, ASM0001, an `ASM0102` after
-upgrading to 0.2.0) with implicit ones: "build my NASM with `dotnet build`", "C# calling
-NASM in one solution", a raw `ld.lld` relocation error.
+**Should-trigger requests** mix explicit ones with implicit ones:
+
+- **Explicit:** an `.asmproj`, ASM0001, an `ASM0102` after upgrading from 0.1.0.
+- **Implicit:** "build my NASM with `dotnet build`", "C# calling NASM in one solution", a
+  raw `ld.lld` relocation error.
 
 **Near misses** share vocabulary but belong elsewhere:
 
@@ -25,28 +27,76 @@ NASM in one solution", a raw `ld.lld` relocation error.
 - a .NET `DllNotFoundException` for SQLite;
 - an ABI register question.
 
-**Task cases** ask for files at fixed paths, so free graders can read them:
+**Task cases** name AsmFoundation.Sdk 0.3.0. They ask for files at fixed paths, so that free
+graders can read them:
 
 | Case | What it tests |
 |---|---|
-| `task-dotnet-interop` | a new `.slnx` with an asm shared library and a .NET app that P/Invokes it: `global.json` msbuild-sdks, the `.slnx` type GUID, `AssemblyName`, `ProjectReference`, `LibraryImport` name |
-| `task-package-and-consume` | a static library packed as `Acme.Crc` 1.2.0, consumed by version from a folder feed: public include file in `include/` (otherwise not packed), `PackageReference`, `nuget.config` |
-| `task-defines-keep-debug` | adding `USE_AVX2=1` without changing Debug and Release: `DefineConstants`, to which 0.2.0 appends `DEBUG`/`RELEASE` itself (0.1.0's `AsmDefineConstants` dropped `DEBUG`; that was this task's trap until 0.2.0) |
-| `task-fix-pic-link-errors` | two `R_X86_64_PC32 … recompile with -fPIC` errors where only `hash64` may stay public: `hidden`, with the visibility before any size |
+| `task-dotnet-interop` | A new `.slnx` with an asm shared library for linux-x64, win-x64 and osx-x64, and a .NET app that P/Invokes it. It checks: `global.json` msbuild-sdks, the `.slnx` type GUID, `AssemblyName`, `ProjectReference`, the per-OS argument registers, and the `LibraryImport` name `calc`. `libcalc` misses `calc.dll` on Windows. |
+| `task-package-and-consume` | A static library packed as `Acme.Crc` 1.2.0, consumed by version from a folder feed, both for linux-x64. It checks: a public include file in `include/` (otherwise not packed), `PackageReference`, `nuget.config`. 0.3.0's `RuntimeIdentifiers` (`ASM0010` without them) is left to the build check. |
+| `task-defines-keep-debug` | Adding `USE_AVX2=1` to a linux-x64 and win-x64 library without changing Debug and Release. It checks `DefineConstants`, after which the SDK appends `DEBUG`/`RELEASE`, the framework, OS and CPU symbols, and the kept `RuntimeIdentifiers`. 0.1.0's `AsmDefineConstants` dropped `DEBUG`, and is `ASM0102` since 0.2.0. |
+| `task-port-to-every-os` | A Linux-only library whose `win-x64` and `osx-x64` builds fail with the NASM errors that 0.3.0 really prints. Only `hash64` may be exported on each OS. It checks: `FUNCTION` (or `-export:`) for the DLL, `HIDDEN_FUNCTION` or `private_extern` for the internals, `hidden` before the size on Linux, and the argument register per OS. |
 
-**`build_check.py`** copies each kept workspace and builds it with AsmFoundation.Sdk 0.2.0
-and its bundled toolchain. It never builds a project that defines its own MSBuild targets.
-Then it runs what it can in a Linux container:
+`task-port-to-every-os` replaced 0.2.0's `task-fix-pic-link-errors` in plugin 0.3.0. Since
+0.3.0 links Linux libraries `-Bsymbolic`, the two `R_X86_64_PC32 … recompile with -fPIC`
+errors that the old case quoted no longer happen. The same sources link, and export their
+internals.
+
+### build_check.py
+
+**`build_check.py`** copies each kept workspace and builds it with AsmFoundation.Sdk 0.3.0
+and its bundled toolchain:
+
+- **What it builds:** every RID the task names, on whatever OS it runs on. It never builds a
+  project that defines its own MSBuild targets.
+- **What it reads:** the exports of each RID's library (ELF, PE and Mach-O), with the
+  plugin's `inspect_output.py`.
+- **What it runs:** only Linux outputs, in a Linux container. Windows and macOS outputs are
+  never run.
 
 | Case | Build check |
 |---|---|
-| `task-dotnet-interop` | the .NET app runs and prints 10 |
+| `task-dotnet-interop` | `libcalc.so`, `calc.dll` and `libcalc.dylib` all export `calc_sum`, and the .NET app runs on Linux and prints 10 |
 | `task-package-and-consume` | `Crc` is packed into `packages/`, `Tool` restores it by version and builds, and the executable exits 0 |
-| `task-defines-keep-debug` | a probe source fails the build unless Debug defines `DEBUG` and `USE_AVX2`, and Release defines `USE_AVX2` but not `DEBUG` |
-| `task-fix-pic-link-errors` | `libHash.so` links, and `hash64` is its only export |
+| `task-defines-keep-debug` | a probe source fails the build unless Debug defines `DEBUG` and `USE_AVX2`, and Release defines `USE_AVX2` but not `DEBUG`, for both RIDs |
+| `task-port-to-every-os` | the project from the prompt builds for its three RIDs, and `hash64` is the only export of `libHash.so`, `Hash.dll` and `libHash.dylib` |
 
 Where a task did not ask for them, the check adds only a `global.json` entry and the local
-feed for the SDK. The SDK was not on nuget.org when the suite was written.
+feed for the SDK. The feed holds the SDK version that the prompts name, which may not be on
+nuget.org yet.
+
+### The controls
+
+`controls/<case>/` holds known answers. `pass-<n>` is right, and `fail-<n>` is wrong in a
+way an agent might be:
+
+| Control | What is wrong with it | Caught by |
+|---|---|---|
+| `task-dotnet-interop/fail-1` | `global calc_sum` with the System V registers, `DllImport("libcalc")` | two graders; `calc.dll` exports nothing |
+| `task-package-and-consume/fail-1` | `Tool` has no `RuntimeIdentifiers` | the build check only (`ASM0010`) |
+| `task-defines-keep-debug/fail-1` | 0.1.0's `AsmDefineConstants` | one grader; `ASM0102` |
+| `task-port-to-every-os/fail-1` | the prompt's sources, verbatim | five graders; the build fails with the prompt's errors |
+| `task-port-to-every-os/fail-2` | `hidden` on Linux only, plain globals elsewhere | four graders; `Hash.dll` exports `[]` and `libHash.dylib` exports `hash_seed` and `mix64` |
+
+Two judges are checked against the controls:
+
+- **The build check:** `build_check.py --controls` builds every control and exits 1 when one
+  passes or fails against its folder name. Run it after changing the check, a task or the SDK
+  version, before trusting a verdict.
+- **Everything else:** `tests/test_evals.py`, in CI, checks four things:
+  - every grader accepts every right answer;
+  - each wrong answer fails exactly the graders that the table above counts;
+  - the plugin's linter is clean on the right answers and flags each wrong one;
+  - prompts, graders and the check name one SDK version.
+
+The answers were also run on 2026-11-20:
+
+- **`task-port-to-every-os/pass-1`:** `hash64` returns what the original sources compute,
+  `mix64(x ^ hash_seed)`, at four inputs, from `Hash.dll` on Windows and from `libHash.so`
+  on Linux.
+- **`task-dotnet-interop/pass-1`:** the app prints 10 on both.
+- **`task-dotnet-interop/fail-1`:** the app stops on Windows with
+  `DllNotFoundException: Unable to load DLL 'libcalc'`.
 
 ## Running it
 
@@ -60,10 +110,16 @@ claude plugin eval . --tag trigger --ablation none --runs 3 -j 4 --model claude-
 claude plugin eval . --tag task --runs 3 -j 4 --model claude-sonnet-5-5 \
   --allow-tools Write Edit --keep-temp --no-publish --json task.json
 
+# The build check's own controls first, then the eval's workspaces.
+python evals/build_check.py --controls evals/controls --feed <folder with AsmFoundation.*.nupkg> \
+  --nuget-packages <empty folder> --work <scratch folder> --docker --out controls-check.json
 python evals/build_check.py --result task.json --feed <folder with AsmFoundation.*.nupkg> \
   --nuget-packages <empty folder> --work <scratch folder> --docker --out build-check.json
 ```
 
+- **The feed** holds `AsmFoundation.Sdk.0.3.0.nupkg` and the toolchain package of the
+  machine that builds (`AsmFoundation.Toolchain.<rid>`). The toolchain package has its own
+  version, 0.2.0 for SDK 0.3.0.
 - **Bash is not needed:** the cases grant only Read, Glob, Grep, Skill, Write and Edit.
   This lets the suite run on native Windows, where `claude plugin eval` refuses shell
   grants for lack of a sandbox backend.
@@ -74,9 +130,9 @@ python evals/build_check.py --result task.json --feed <folder with AsmFoundation
 
 ### 2026-11-17
 
-Plugin 0.1.0 against AsmFoundation.Sdk 0.1.0, with no judge model anywhere. The prompts,
-graders and build check were moved to 0.2.0 with plugin 0.2.0; these results were not
-re-measured.
+These results come from plugin 0.1.0 against AsmFoundation.Sdk 0.1.0, with no judge model
+anywhere. Plugin 0.2.0 moved the prompts, graders and build check to 0.2.0, and plugin 0.3.0
+moved them to 0.3.0 and replaced one case. These results were not measured again.
 
 | Measure | Result |
 |---|---|
@@ -97,7 +153,7 @@ re-measured.
 - a package that ships no include file.
 
 **The one task without a difference:** fixing `R_X86_64_PC32` with `hidden`. The base
-model already knows that rule.
+model already knew that rule. That case is the one 0.3.0 replaced.
 
 **Details:**
 
