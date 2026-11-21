@@ -1,0 +1,8 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <OutputType>StaticLibrary</OutputType>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <PackageId>Acme.Crc</PackageId>
+    <Version>1.2.0</Version>
+  </PropertyGroup>
+</Project>

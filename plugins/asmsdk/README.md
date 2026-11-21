@@ -2,9 +2,9 @@
 
 [AsmSdk](https://github.com/AsmFoundation/AsmSdk) (`AsmFoundation.Sdk`; documentation at
 <https://asmfoundation.github.io/AsmSdk/>) is the
-AsmFoundation's project, dependency and build management for x86-64 assembly, on MSBuild
-and NuGet. This plugin gives Claude the knowledge to build, reference, package, test and
-release `.asmproj` projects without guessing.
+AsmFoundation's project, dependency and build management for assembly, on MSBuild and NuGet.
+This plugin gives Claude the knowledge to build, reference, package, test and release
+`.asmproj` projects without guessing.
 
 ```text
 /plugin marketplace add AsmFoundation/AsmClaudeMarketplace
@@ -17,23 +17,30 @@ also ask for it by name: `/asmsdk:asmsdk`.
 
 ## What it covers
 
-It documents **AsmFoundation.Sdk 0.2.0**, where an `.asmproj` uses .NET's own properties
-(`TargetFramework` `freestanding` or `libc`, `AssemblyName`, `DefineConstants`, `LinkerArg`…).
-Every behavior the skill marks *verified* was measured by building with an AsmSdk release and
-its bundled NASM 3.02 and `ld.lld` 23.1.5, on Windows and in Linux; what 0.2.0 changed is
-verified by AsmSdk's own end-to-end tests. For a 0.1.0 project, the skill and the linter name
-each setting's 0.2.0 replacement.
+It documents **AsmFoundation.Sdk 0.3.0**. A project lists its runtime identifiers (seven:
+x86-64 and ARM64 on Windows, Linux and macOS, plus musl on x64), and one `dotnet build`
+builds each:
+
+- NASM for the x64 RIDs, GNU syntax through llvm-mc for ARM64;
+- the C library of every OS;
+- .NET consumers by RID.
+
+What the skill marks *verified* was measured. Each behavior was built with an AsmSdk release
+and its bundled tools, or is covered by AsmSdk's end-to-end tests on five build machines.
+What each output format's NASM accepts was measured directive by directive. For a 0.1.0 or
+0.2.0 project, the skill and the linter name each removed setting's replacement.
 
 | Part | Content |
 |---|---|
-| `SKILL.md` | the model, recipes (new projects, .NET interop, asm references, packages, glibc, defines, shared include folders), the NASM rules that decide whether code links, diagnostics, verified footguns |
+| `SKILL.md` | the model, recipes (one source for every OS, .NET by RID and publishing, asm references, packages per RID, the C library per OS, defines, shared include folders), the per-OS NASM rules that decide whether code assembles and links, diagnostics, verified footguns |
 | `references/project-reference.md` | every property, item, metadata, target, generated file and error, with exact defaults and evaluation order |
-| `references/runtimes-and-linking.md` | the `freestanding` and `libc` target frameworks, exact link lines, the libc stub, production link options (`-z defs`, `--exclude-libs`, `$ORIGIN`, `ExportsFile`), debug information |
-| `references/nasm-for-asmsdk.md` | position-independent code with the exact linker errors, symbols, sections, includes, the System V ABI, system calls, templates that were run from Python |
-| `references/dependencies-and-packaging.md` | ProjectReference and PackageReference flows, pack layout, consumer props, Central Package Management, feeds, publishing |
-| `references/interop.md` | .NET P/Invoke (`LibraryImport`), marshalling, tests, Python `ctypes`, C headers |
+| `references/platforms.md` | the seven RIDs, the RID outer build, source selection by file name, `asmsdk.inc` and `asmsdk-gnu.inc`, what each OS's linker and loader require |
+| `references/runtimes-and-linking.md` | the `freestanding` and `libc` target frameworks, exact link lines per OS, the C library stand-ins, production link options (`-z defs`, `--exclude-libs`, `$ORIGIN`, `ExportsFile`), debug information |
+| `references/nasm-for-asmsdk.md` | position-independent code with the exact linker errors, symbols per format (export, hide, size), sections, includes, the calling conventions, system calls |
+| `references/dependencies-and-packaging.md` | ProjectReference and PackageReference flows, pack layout per RID, consumer props, Central Package Management, feeds, publishing |
+| `references/interop.md` | .NET P/Invoke (`LibraryImport`) by RID, publishing (single file, NativeAOT), marshalling, tests, Python `ctypes`, C headers |
 | `references/toolchain.md` | bundled vs. system tools, supported build machines, offline and air-gapped builds |
-| `references/ci-and-release.md` | GitHub Actions, trusted publishing to nuget.org, reproducible outputs |
+| `references/ci-and-release.md` | GitHub Actions on the three OSes, trusted publishing to nuget.org, reproducible outputs |
 | `references/troubleshooting.md` | every error found: exact text, cause, fix |
 | `references/internals.md` | the target graph, incremental rules, extension points (generated sources and includes, post-link steps) |
 
@@ -43,12 +50,17 @@ All three need only Python 3.8+.
 
 | Script | Does |
 |---|---|
-| `scripts/new_asmproj.py` | scaffolds a project (library, static library, executable or objects; `--framework freestanding` or `libc`; packable or not), its `global.json` entry and `.slnx` registration. It never overwrites a file |
-| `scripts/check_asmproj.py` | lints projects and sources with 33 checks, such as missing `default rel`, a call without `wrt ..plt`, a `hidden` that NASM ignores, a 0.1.0 setting 0.2.0 removed, two projects NuGet cannot tell apart, a freestanding project referencing libc-only code, an untracked include folder, a package without include files or a wrong reference kind. It exits 1 on errors |
-| `scripts/inspect_elf.py` | summarizes an ELF output or archive (type, SONAME, NEEDED, RUNPATH, interpreter, exports, imports, stack) using the toolchain's own `llvm-readobj`, and checks expectations for CI |
+| `scripts/new_asmproj.py` | scaffolds a project for every RID its kind can build, or the ones `--rids` names: library, static library, executable or objects, `freestanding` or `libc`, packable or not. Starter sources come for both CPUs, written to assemble and link on every OS. It also adds the `global.json` entry and the `.slnx` registration. It never overwrites a file |
+| `scripts/check_asmproj.py` | lints projects and sources with 45 checks. It judges each source for the OSes it builds for: its RIDs, its file-name qualifier, its `%ifdef WINDOWS`/`LINUX`/`MACOS` guards. Examples: a directive that macOS's or Windows' NASM rejects, a call to another library without `PLT`, a plain `global` no DLL exports, a symbol hidden on one OS and exported on another, a `hidden` that NASM ignores, a C function outside the OS's C library, a removed setting, two projects NuGet cannot tell apart, the source-selection errors. It exits 1 on errors |
+| `scripts/inspect_output.py` | summarizes an output or static library using the toolchain's own `llvm-readobj`, and checks expectations for CI. ELF: type, SONAME, NEEDED, RUNPATH, interpreter, exports, imports, stack. PE: DLL or program, exports, imported DLLs and functions, ASLR and DEP. Mach-O: install name, needed libraries, exports and imports by C name |
 
-`tests/test_scripts.py` gives every linter check a fixture that must trigger it, plus clean
-projects that must not trigger anything:
+Two test modules, standard library only:
+
+- **`tests/test_scripts.py`** gives every linter check a fixture that must trigger it, plus
+  clean projects that must not trigger anything. It tests the inspector on canned
+  `llvm-readobj` output.
+- **`tests/test_evals.py`** checks the evaluation suite's graders, prompts and linter against
+  its known right and wrong answers.
 
 ```sh
 python -m unittest discover -s plugins/asmsdk/tests
@@ -61,9 +73,13 @@ kinds of case:
 
 - **trigger cases:** prompts that should and should not load the skill;
 - **task cases:** run with and without the plugin. What the agent wrote is graded, and then
-  built with the real SDK.
+  built with the real SDK for every RID the task names. The check reads each library's
+  exports, and runs the Linux outputs.
 
-**First results (2026-11-17):**
+`evals/controls/` holds a right answer and wrong ones for every task, which prove both
+judges.
+
+**First results (2026-11-17, plugin 0.1.0 with AsmSdk 0.1.0; not re-measured since):**
 
 - **Triggering:** the skill loaded for 30 of 30 should-trigger runs and 0 of 30 near-miss
   runs on Sonnet 5.5, and 10 of 10 and 0 of 10 on Opus 5.5.

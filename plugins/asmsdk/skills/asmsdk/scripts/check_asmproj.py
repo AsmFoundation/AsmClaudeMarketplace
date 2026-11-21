@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
 """Lint AsmSdk projects and their NASM sources for the mistakes that break builds or outputs.
 
-Why this exists: AsmFoundation.Sdk 0.2.0 has failure modes that are silent (a stale build, a
-package without include files) or that surface as messages far from their cause ("relocation
-R_X86_64_PC32 cannot be used against symbol", "Ambiguous project name"), and a 0.1.0 project
-fails on 0.2.0 until its settings are renamed. Each check here encodes one of them, measured
-against the 0.2.0 targets and the bundled NASM 3.02 / ld.lld 23.1.5, and reports the file, line
-and fix before anything is built.
+Why this exists: AsmFoundation.Sdk 0.3.0 builds one project for up to seven runtime
+identifiers (win-x64, win-arm64, linux-x64, linux-arm64, linux-musl-x64, osx-x64, osx-arm64),
+and many of its failure modes are silent (a stale build, a package without include files, a
+Windows DLL that exports nothing) or surface far from their cause ("relocation R_X86_64_PC32
+cannot be used against symbol", "unrecognised symbol type `function'" from macOS's NASM
+output, ASM0080 after a link). A directive that is right on Linux can stop the macOS build,
+and the reverse. Each check here encodes one such fact, measured against the 0.3.0 targets
+and the bundled NASM 3.02 / LLVM 23.1.5, and reports the file, line and fix before anything
+is built.
 
 What it reads: every *.asmproj under the given path (or the given .asmproj), the projects they
-reference, their *.asm / *.inc files, the nearest global.json and Directory.Build.props, and
-any *.slnx under the path. It never writes. It does not evaluate MSBuild: properties are read
-as written, conditions are noted but not evaluated, so a property set only under a condition
-is treated as set. Source checks are line-based heuristics over NASM syntax, tuned to have no
-false errors on the AsmSdk samples; treat a warning as "look here", an error as "this will
-fail as written".
+reference, their *.asm / *.inc / *.s files, the nearest global.json and Directory.Build.props,
+any *.slnx under the path, and (when the pinned SDK version is restored in the NuGet cache) the
+SDK's own C library symbol lists. It never writes. It does not evaluate MSBuild: properties are
+read as written, conditions are noted but not evaluated, so a property set only under a
+condition is treated as set.
+
+How it knows the platforms: the RIDs a project builds are its RuntimeIdentifiers (or
+RuntimeIdentifier); a project that names none builds what its referencing projects ask for, so
+it inherits the RIDs of the asm projects that reference it, and when nothing here references it
+every RID is assumed and platform findings become warnings. Each source then builds the RIDs
+the SDK would select it for (its extension and file-name qualifier, as AsmSelectSources picks
+them), and each line the platforms its %ifdef WINDOWS / LINUX / MACOS guards leave it on. Source
+checks are line-based heuristics over NASM syntax: treat a warning as "look here", an error as
+"this will fail as written". GNU-syntax (.s) files are counted for RID coverage, not linted.
 
 Usage:
     check_asmproj.py <path> [<path> ...] [--json] [--no-info]
@@ -33,10 +44,10 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 #: The SDK version whose behavior these checks encode.
-DOCUMENTED_SDK_VERSION = "0.2.0"
+DOCUMENTED_SDK_VERSION = "0.3.0"
 
 #: Settings 0.2.0 removed (the build fails with ASM0100-ASM0108), and what replaces each.
 #: AsmDefine items, the eighth, are checked separately: they are items, not properties.
@@ -50,15 +61,98 @@ REMOVED_SETTINGS = {
     "AsmOutputKind": "OutputType",
 }
 
+#: Settings 0.3.0 removed without an error of their own: the SDK no longer reads them, so a
+#: project that relied on them names no RID and stops with ASM0010.
+REMOVED_IN_030 = {
+    "AsmTargetRid": "RuntimeIdentifiers (win-x64;linux-x64;osx-arm64; ...) or one RuntimeIdentifier",
+    "AsmFormat": "nothing: the RID decides the object format (win64, elf64, macho64)",
+}
+
 #: Generic MSBuild project type; an .slnx entry for an .asmproj needs it (MSB4025 otherwise).
 ASMPROJ_TYPE_GUID = "13B669BE-BB05-4DDF-9536-439F39A36129"
 
 #: Folders never scanned for sources: build outputs and tool state.
 SKIP_DIRS = {"bin", "obj", ".git", ".vs", ".idea", "node_modules", "artifacts"}
 
-#: Functions the libc stub (stubs/libc.asm; the list is the same in 0.1.0 and 0.2.0) defines.
-#: A libc executable that calls a function outside this set fails with "undefined symbol"
-#: unless it is an AsmLibcSymbol item.
+#: The seven RIDs AsmSdk 0.3.0 builds: name -> (OS, CPU, musl). The same table as the SDK's
+#: RuntimeTarget.All, which the source selection below mirrors.
+RIDS: Dict[str, Tuple[str, str, bool]] = {
+    "win-x64": ("Windows", "x64", False),
+    "win-arm64": ("Windows", "arm64", False),
+    "linux-x64": ("Linux", "x64", False),
+    "linux-arm64": ("Linux", "arm64", False),
+    "linux-musl-x64": ("Linux", "x64", True),
+    "osx-x64": ("MacOS", "x64", False),
+    "osx-arm64": ("MacOS", "arm64", False),
+}
+
+#: The OS names used throughout (RIDS' first field), and the set of all three.
+OSES = ("Windows", "Linux", "MacOS")
+ALL_OSES: FrozenSet[str] = frozenset(OSES)
+
+#: How a finding names a platform: the OS and NASM's output format for it.
+OS_LABEL = {"Windows": "Windows (win64)", "Linux": "Linux (elf64)", "MacOS": "macOS (macho64)"}
+
+#: File-name qualifiers that are not RIDs (x.linux.asm, x.unix.asm, x.arm64.s, ...).
+FAMILY_QUALIFIERS = {"win", "linux", "linux-musl", "osx", "unix", "x64", "arm64"}
+
+#: The SDK's defines that name an OS, for %ifdef guards: WINDOWS, LINUX and MACOS select one
+#: OS; MUSL implies Linux; ARM64 is never defined while NASM assembles (x64 only).
+OS_DEFINES: Dict[str, FrozenSet[str]] = {
+    "WINDOWS": frozenset({"Windows"}), "LINUX": frozenset({"Linux"}), "MACOS": frozenset({"MacOS"}),
+    "MUSL": frozenset({"Linux"}), "ARM64": frozenset(),
+}
+
+#: The SDK's defines that do not depend on the OS: a block under one of them is assembled on
+#: every OS the file builds, so what is inside must suit all of them.
+OS_NEUTRAL_DEFINES = {"X64", "DEBUG", "RELEASE", "FREESTANDING", "LIBC", "ASMSDK_EXECUTABLE", "ASMSDK_EXPORTS_FILE"}
+
+#: NASM's output format names, for %ifidn __OUTPUT_FORMAT__ guards.
+OUTPUT_FORMAT_OS = {"elf64": "Linux", "elf": "Linux", "win64": "Windows", "macho64": "MacOS"}
+
+#: Words after `global name:` and the platforms whose NASM 3.02 output stops on them, measured
+#: with the bundled NASM (elf64, win64, macho64): "unrecognised symbol type". win64 accepts and
+#: ignores `function`; only macho64 knows `private_extern`.
+REJECTED_SYMBOL_WORDS: Dict[str, FrozenSet[str]] = {
+    "function": frozenset({"MacOS"}),
+    "data": frozenset({"Windows", "MacOS"}),
+    "object": frozenset({"Windows", "MacOS"}),
+    "notype": frozenset({"Windows", "MacOS"}),
+    "hidden": frozenset({"Windows", "MacOS"}),
+    "internal": frozenset({"Windows", "MacOS"}),
+    "protected": frozenset({"Windows", "MacOS"}),
+    "private_extern": frozenset({"Linux", "Windows"}),
+}
+
+#: `wrt ..x` special symbols and the platforms whose NASM output does not define them
+#: (measured: "symbol `..plt' not defined"). ..plt and ..got are ELF's, ..gotpcrel Mach-O's,
+#: ..imagebase PE's.
+REJECTED_WRT: Dict[str, FrozenSet[str]] = {
+    "..plt": frozenset({"Windows", "MacOS"}),
+    "..got": frozenset({"Windows", "MacOS"}),
+    "..gotpcrel": frozenset({"Linux", "Windows"}),
+    "..imagebase": frozenset({"Linux", "MacOS"}),
+}
+
+#: Section names a platform's NASM output rejects (measured): macho64 stops on both with
+#: "unknown section name".
+REJECTED_SECTIONS: Dict[str, FrozenSet[str]] = {
+    ".note.gnu-stack": frozenset({"MacOS"}),
+    ".drectve": frozenset({"MacOS"}),
+}
+
+#: asmsdk.inc's function macros: each writes every format's own directives, so the symbols
+#: they define are exempt from the per-format directive checks.
+ASMSDK_FUNCTION_MACROS = ("FUNCTION", "LOCAL_FUNCTION", "HIDDEN_FUNCTION")
+
+#: What the SDK's Windows C library stand-in adds to ucrtbase.dll's exports: wrappers of its
+#: own for the functions the UCRT headers define inline (stubs/winstdio-*).
+WINDOWS_STDIO_WRAPPERS = frozenset(
+    "printf fprintf sprintf snprintf vprintf vfprintf vsprintf vsnprintf sscanf atexit".split())
+
+#: Functions the Linux C library stub defines (stubs/linux.symbols: the same 296 names in
+#: 0.2.0 and 0.3.0, for glibc and musl alike). A libc executable that calls a function outside
+#: this set fails with "undefined symbol" unless it is an AsmLibcSymbol item.
 LIBC_STUB_FUNCTIONS = frozenset("""
 __libc_start_main __cxa_finalize __cxa_atexit atexit exit _exit abort __stack_chk_fail __assert_fail
 __errno_location __sched_cpucount malloc free calloc realloc reallocarray aligned_alloc posix_memalign
@@ -109,6 +203,10 @@ REGISTERS = set(
     + [f"k{i}" for i in range(8)] + [f"mm{i}" for i in range(8)] + [f"st{i}" for i in range(8)]
     + "cs ds es fs gs ss".split())
 
+#: asmsdk.inc's register names for the calling convention (ARG1 is rcx on Windows, rdi
+#: elsewhere): registers too, for the addressing checks.
+ARG_REGISTER_MACROS = {f"arg{i}{s}" for i in range(1, 7) for s in ("", "d", "w", "b")}
+
 #: NASM words that can appear inside operands without being symbol references.
 OPERAND_KEYWORDS = {"rel", "abs", "wrt", "byte", "word", "dword", "qword", "tword", "oword", "yword",
                     "zword", "ptr", "strict", "nosplit", "seg", "near", "far", "short", "to"}
@@ -118,6 +216,188 @@ DATA_DIRECTIVES = ("db", "dw", "dd", "dq", "dt", "do", "dy", "dz")
 RES_DIRECTIVES = ("resb", "resw", "resd", "resq", "rest", "reso", "resy", "resz")
 
 SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
+
+
+def rid_specificity(rid: str, qualifier: str) -> int:
+    """How closely a file-name qualifier fits a RID: the SDK's RuntimeTarget.Specificity.
+
+    Args:
+        rid: One of RIDS' names.
+        qualifier: The qualifier of x.<qualifier>.asm, or "" for none.
+
+    Returns:
+        1 for no qualifier, 50 for the RID itself, 40 linux-musl (musl only), 30 for its OS
+        family (win, linux, osx), 20 unix (not Windows), 10 its CPU (x64, arm64), 0 when the
+        qualifier does not apply to the RID.
+    """
+    os_name, cpu, musl = RIDS[rid]
+    q = qualifier.lower()
+    if not q:
+        return 1
+    if q == rid:
+        return 50
+    return {
+        "linux-musl": 40 if musl else 0,
+        "win": 30 if os_name == "Windows" else 0,
+        "linux": 30 if os_name == "Linux" else 0,
+        "osx": 30 if os_name == "MacOS" else 0,
+        "unix": 20 if os_name != "Windows" else 0,
+        "x64": 10 if cpu == "x64" else 0,
+        "arm64": 10 if cpu == "arm64" else 0,
+    }.get(q, 0)
+
+
+def split_source_name(path: str) -> Tuple[str, str, str]:
+    """Split a source path the way the SDK's AsmSelectSources does.
+
+    Args:
+        path: An .asm or .s path.
+
+    Returns:
+        (key, qualifier, language): key is folder + name without qualifier and extension
+        (case-folded: files of one key compete), qualifier is "" or a RID / family word, and
+        language is "Nasm" (.asm, x64 only) or "Gnu" (.s, llvm-mc).
+    """
+    folder, name = os.path.split(path)
+    stem, extension = os.path.splitext(name)
+    language = "Gnu" if extension.lower() == ".s" else "Nasm"
+    qualifier = ""
+    dot = stem.rfind(".")
+    if dot > 0 and (stem[dot + 1:].lower() in RIDS or stem[dot + 1:].lower() in FAMILY_QUALIFIERS):
+        qualifier = stem[dot + 1:]
+        stem = stem[:dot]
+    return os.path.normcase(os.path.join(folder, stem)), qualifier, language
+
+
+def source_score(path: str, rid: str) -> int:
+    """The SDK's score of one source for one RID (0 = not built for it).
+
+    Args:
+        path: An .asm or .s path.
+        rid: One of RIDS' names.
+
+    Returns:
+        0 when the file does not build the RID: NASM never builds ARM64, and an unqualified
+        file builds only its own language's CPU (.asm x64, .s ARM64). Otherwise the
+        qualifier's rid_specificity, the highest of a key winning.
+    """
+    _, qualifier, language = split_source_name(path)
+    cpu = RIDS[rid][1]
+    if language == "Nasm" and cpu != "x64":
+        return 0
+    if not qualifier:
+        return 1 if (language == "Nasm") == (cpu == "x64") else 0
+    return rid_specificity(rid, qualifier)
+
+
+def qualifier_is_arm64_only(qualifier: str) -> bool:
+    """Whether a qualifier names only ARM64 RIDs (a NASM file with it is ASM0021).
+
+    Args:
+        qualifier: A file-name qualifier.
+
+    Returns:
+        True when every RID it applies to is ARM64 (arm64, linux-arm64, ...).
+    """
+    applies = [rid for rid in RIDS if rid_specificity(rid, qualifier) > 0]
+    return bool(applies) and all(RIDS[rid][1] == "arm64" for rid in applies)
+
+
+def select_sources(sources: List[str], rid: str) -> Tuple[List[str], List[List[str]]]:
+    """Pick the sources one RID builds, as AsmSelectSources does.
+
+    Args:
+        sources: Every .asm and .s source of the project.
+        rid: One of RIDS' names.
+
+    Returns:
+        (selected, ties): the winning file of each key that applies, and the groups of files
+        that tie for a key (ASM0020; none of a tied group is selected).
+    """
+    groups: Dict[str, List[Tuple[int, str]]] = {}
+    for path in sources:
+        score = source_score(path, rid)
+        if score > 0:
+            groups.setdefault(split_source_name(path)[0], []).append((score, path))
+    selected, ties = [], []
+    for candidates in groups.values():
+        best = max(score for score, _ in candidates)
+        winners = [path for score, path in candidates if score == best]
+        if len(winners) > 1:
+            ties.append(sorted(winners))
+        else:
+            selected.append(winners[0])
+    return sorted(selected), ties
+
+
+def _global_packages_folders() -> List[str]:
+    """The NuGet global packages folders to search for the SDK package.
+
+    Returns:
+        NUGET_PACKAGES when set, then the default ~/.nuget/packages; existing folders only.
+    """
+    candidates = [os.environ.get("NUGET_PACKAGES", ""), os.path.join(os.path.expanduser("~"), ".nuget", "packages")]
+    return [c for c in candidates if c and os.path.isdir(c)]
+
+
+def read_symbol_list(path: str) -> Set[str]:
+    """Read one of the SDK's stubs/*.symbols lists.
+
+    Args:
+        path: The list file.
+
+    Returns:
+        The names: several per line, "#" comments, "data <name> <size>" and "raw <name>" lines
+        contributing their name.
+
+    Raises:
+        OSError: The file cannot be read (callers check that it exists).
+    """
+    names: Set[str] = set()
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            words = line.split("#", 1)[0].split()
+            if not words:
+                continue
+            if words[0] in ("data", "raw") and len(words) > 1:
+                names.add(words[1])
+            else:
+                names.update(words)
+    return names
+
+
+def load_sdk_symbol_lists(version: str) -> Dict[str, Set[str]]:
+    """The C library names the SDK links against per OS, from its package when it is restored.
+
+    Linux's list is built in (LIBC_STUB_FUNCTIONS); macOS's and Windows' are too long to copy
+    and differ by release, so they are read from <packages>/asmfoundation.sdk/<version>/stubs/
+    when that version is in the NuGet cache. Without them, the undefined-symbol check skips
+    those OSes rather than guessing.
+
+    Args:
+        version: The SDK version global.json pins.
+
+    Returns:
+        Keys present only for lists that were found: "MacOS" (libSystem, for libc),
+        "WindowsLibc" (ucrtbase.dll + kernel32.dll + the SDK's stdio wrappers) and
+        "WindowsKernel" (kernel32.dll, which every Windows output links).
+    """
+    lists: Dict[str, Set[str]] = {}
+    for root in _global_packages_folders():
+        stubs = os.path.join(root, "asmfoundation.sdk", version.lower(), "stubs")
+        if not os.path.isdir(stubs):
+            continue
+        macos = os.path.join(stubs, "macos.symbols")
+        ucrt = os.path.join(stubs, "ucrtbase.symbols")
+        kernel = os.path.join(stubs, "kernel32.symbols")
+        if os.path.isfile(macos):
+            lists["MacOS"] = read_symbol_list(macos)
+        if os.path.isfile(kernel):
+            lists["WindowsKernel"] = read_symbol_list(kernel)
+            if os.path.isfile(ucrt):
+                lists["WindowsLibc"] = read_symbol_list(ucrt) | lists["WindowsKernel"] | set(WINDOWS_STDIO_WRAPPERS)
+        break
+    return lists
 
 
 @dataclass
@@ -209,7 +489,7 @@ class Project:
 
     @property
     def runtime(self) -> str:
-        """"Libc" when any build of the project targets libc (it links glibc), else "Freestanding"."""
+        """"Libc" when any build of the project targets libc (it links the C library), else "Freestanding"."""
         return "Libc" if "libc" in self.frameworks else "Freestanding"
 
     @property
@@ -224,18 +504,37 @@ class Project:
 
     @property
     def produces_static(self) -> bool:
-        """True when a referencing project will link a .a from this one."""
+        """True when a referencing project will link a static library from this one."""
         return self.kind == "StaticLibrary" or (self.prop("AsmProduceStaticLibrary") or "").lower() == "true"
 
     @property
     def pic_required(self) -> bool:
-        """True when the linker will reject non-PIC code: shared libraries and libc executables (PIEs)."""
+        """True when Linux's linker rejects non-PIC code here: shared libraries and libc executables (PIEs)."""
         return self.kind == "SharedLibrary" or (self.kind == "Executable" and self.runtime == "Libc")
+
+    @property
+    def declared_rids(self) -> List[str]:
+        """The RIDs the project lists itself, lower-cased: RuntimeIdentifiers, else a lone RuntimeIdentifier.
+
+        Conditions are ignored, as everywhere here. Empty when the project names none (it
+        then builds what its referencing projects ask for, or stops with ASM0010).
+        """
+        listed = " ;".join(v for v, _ in self.prop_entries("RuntimeIdentifiers"))
+        if not listed.strip():
+            listed = " ;".join(v for v, _ in self.prop_entries("RuntimeIdentifier"))
+        return list(dict.fromkeys(r.strip().lower() for r in listed.split(";") if r.strip() and "$(" not in r))
 
 
 @dataclass
 class SourceInfo:
-    """Facts extracted from one NASM file (comments removed, line numbers kept)."""
+    """Facts extracted from one NASM file (comments removed, line numbers kept).
+
+    line_oses maps each code line to (OSes, uncertain, in_macro): the platforms its %ifdef
+    WINDOWS / LINUX / MACOS (and %ifidn __OUTPUT_FORMAT__) guards leave it assembled on,
+    whether a guard the linter cannot read is involved (platform findings then become
+    warnings), and whether the line is inside a %macro body (assembled only where the macro
+    is used, so the per-format checks skip it).
+    """
 
     path: str
     lines: List[Tuple[int, str]]
@@ -244,8 +543,18 @@ class SourceInfo:
     includes: List[Tuple[int, str]] = field(default_factory=list)
     externs: Set[str] = field(default_factory=set)
     globals: Dict[str, Tuple[int, str]] = field(default_factory=dict)
+    #: Every declaration of each global, in source order, as (line, qualifiers): a symbol written
+    #: once per OS (hidden on Linux, private_extern on macOS, a plain global on Windows) has one
+    #: per guard, and only together do they say whether it is meant to be internal. `globals`
+    #: keeps the last declaration only, which is all the symbol-resolution checks need.
+    global_decls: Dict[str, List[Tuple[int, str]]] = field(default_factory=dict)
     labels: Set[str] = field(default_factory=set)
     constants: Set[str] = field(default_factory=set)
+    macro_symbols: Set[str] = field(default_factory=set)
+    extern_oses: Dict[str, FrozenSet[str]] = field(default_factory=dict)
+    uses_asmsdk_inc: bool = False
+    manual_exports: bool = False
+    line_oses: Dict[int, Tuple[FrozenSet[str], bool, bool]] = field(default_factory=dict)
 
 
 def visibility(qualifiers: str) -> Tuple[Optional[str], Optional[str]]:
@@ -253,7 +562,7 @@ def visibility(qualifiers: str) -> Tuple[Optional[str], Optional[str]]:
 
     NASM 3.02 reads the visibility keyword only right after the type: `function hidden (size)`
     and `data hidden 8` hide the symbol, while `function (size) hidden` and `data 8 hidden`
-    are accepted without any warning and leave it exported and preemptible (verified).
+    are accepted without any warning and leave it exported (verified).
 
     Args:
         qualifiers: Everything after the colon of `global name:...`, lower-case.
@@ -370,6 +679,38 @@ def _strip_strings(text: str) -> str:
     return re.sub(r"'[^']*'|\"[^\"]*\"|`[^`]*`", "''", text)
 
 
+def condition_oses(directive: str, argument: str) -> Optional[FrozenSet[str]]:
+    """The OSes on which a NASM conditional is true, when the linter can tell.
+
+    Args:
+        directive: The directive without "%" and without the "el" of %elif forms, lower-case:
+            "ifdef", "ifndef", "ifidn", "ifidni", "ifnidn", "ifnidni", "if", ...
+        argument: The rest of the line.
+
+    Returns:
+        The OSes for which the condition holds; None when it does not depend on what the
+        linter knows (a user macro, an arithmetic %if), which makes the block uncertain.
+    """
+    words = argument.replace(",", " ").split()
+    if directive in ("ifdef", "ifndef") and words:
+        name = words[0]
+        if name in OS_DEFINES:
+            on = OS_DEFINES[name]
+        elif name in OS_NEUTRAL_DEFINES:
+            on = ALL_OSES
+        else:
+            return None
+        return on if directive == "ifdef" else (ALL_OSES - on if name not in OS_NEUTRAL_DEFINES and name != "MUSL" else ALL_OSES)
+    if directive in ("ifidn", "ifidni", "ifnidn", "ifnidni") and len(words) >= 2:
+        sides = [w.strip().lower() for w in words[:2]]
+        fmt = next((s for s in sides if s in OUTPUT_FORMAT_OS), None)
+        other = next((s for s in sides if s.strip("?").strip("_") == "output_format" or "output_format" in s), None)
+        if fmt and other:
+            on = frozenset({OUTPUT_FORMAT_OS[fmt]})
+            return on if directive in ("ifidn", "ifidni") else ALL_OSES - on
+    return None
+
+
 def parse_source(path: str) -> SourceInfo:
     """Extract the facts the source checks need from one NASM file.
 
@@ -383,28 +724,96 @@ def parse_source(path: str) -> SourceInfo:
         raw = f.read().splitlines()
     info = SourceInfo(path=path, lines=[])
     in_struc = False
+    # The conditional-assembly state: the OSes the current line is assembled on, whether an
+    # unreadable condition is involved, and one frame per open %if (the OSes before it, its
+    # uncertainty, and the OSes its branches took so far: None once a branch was unreadable).
+    active: FrozenSet[str] = ALL_OSES
+    uncertain = False
+    frames: List[Tuple[FrozenSet[str], bool, Optional[FrozenSet[str]]]] = []
+    macro_depth = 0
     for number, text in enumerate(raw, 1):
         code = strip_comment(text)
         if not code.strip():
             continue
+        stripped = code.strip()
+        low = stripped.lower()
+        directive = re.match(r"^%(el)?(if\w*|else|endif)\b(.*)$", low)
+        if directive:
+            elif_, word, rest = directive.group(1), directive.group(2), code.strip()[len(directive.group(0)) - len(directive.group(3)):]
+            if word == "endif":
+                if frames:
+                    active, uncertain, _ = frames.pop()
+            elif word == "else":
+                if frames:
+                    parent, parent_uncertain, taken = frames[-1]
+                    active = parent - taken if taken is not None else parent
+                    uncertain = parent_uncertain or taken is None
+            elif elif_:
+                if frames:
+                    parent, parent_uncertain, taken = frames[-1]
+                    on = condition_oses(word, rest)
+                    if on is not None and taken is not None:
+                        active, uncertain = parent & (on - taken), parent_uncertain
+                        frames[-1] = (parent, parent_uncertain, taken | on)
+                    else:
+                        active = parent - taken if taken is not None else parent
+                        uncertain = True
+                        frames[-1] = (parent, parent_uncertain, None)
+            else:
+                on = condition_oses(word, rest)
+                frames.append((active, uncertain, on))
+                if on is not None:
+                    active = active & on
+                else:
+                    uncertain = True
+            info.lines.append((number, code))
+            info.line_oses[number] = (active, uncertain, macro_depth > 0)
+            continue
+        if re.match(r"^%i?macro\b", low):
+            macro_depth += 1
+        elif re.match(r"^%endmacro\b", low):
+            macro_depth = max(0, macro_depth - 1)
         info.lines.append((number, code))
-        low = code.strip().lower()
+        info.line_oses[number] = (active, uncertain, macro_depth > 0)
         if re.match(r"^\[?\s*default\s+rel\b", low):
             info.default_rel = True
         if re.match(r"^\[?\s*(section|segment)\s+\.note\.gnu-stack\b", low):
             info.has_gnu_stack = True
+        if re.match(r"^\[?\s*(section|segment)\s+\.drectve\b", low):
+            info.manual_exports = True
         m = re.match(r'^\s*%include\s+["<](.+?)[">]', code)
         if m:
             info.includes.append((number, m.group(1)))
+            if os.path.basename(m.group(1)).lower() == "asmsdk.inc":
+                info.uses_asmsdk_inc = True
             continue
         if re.match(r"^\s*struc\b", low):
             in_struc = True
         elif re.match(r"^\s*endstruc\b", low):
             in_struc = False
+        # asmsdk.inc's FUNCTION, LOCAL_FUNCTION and HIDDEN_FUNCTION define the label and write
+        # each format's directives themselves (exported, file-local, global but exported from
+        # no image). NASM macro names are case-sensitive, as the SDK spells them.
+        m = re.match(rf"^\s*({'|'.join(ASMSDK_FUNCTION_MACROS)})\s+({IDENT})", code)
+        if m and macro_depth == 0:
+            name = m.group(2).lstrip("$")
+            info.labels.add(name)
+            info.macro_symbols.add(name)
+            if m.group(1) == "FUNCTION":
+                info.globals[name] = (number, "function")
+                info.global_decls.setdefault(name, []).append((number, "function"))
+            elif m.group(1) == "HIDDEN_FUNCTION":
+                info.globals[name] = (number, "function hidden")
+                info.global_decls.setdefault(name, []).append((number, "function hidden"))
+            continue
         m = re.match(r"^\s*\[?\s*extern\s+(.+?)\]?\s*$", code, re.IGNORECASE)
         if m:
             for name in m.group(1).split(","):
-                info.externs.add(name.split(":")[0].strip().lstrip("$"))
+                symbol = name.split(":")[0].strip().lstrip("$")
+                info.externs.add(symbol)
+                # An extern under %ifdef WINDOWS (kernel32's ExitProcess) is an import on
+                # Windows only: the undefined-symbol check must not judge it for Linux.
+                info.extern_oses[symbol] = info.extern_oses.get(symbol, frozenset()) | active
             continue
         m = re.match(r"^\s*\[?\s*global\s+(.+?)\]?\s*$", code, re.IGNORECASE)
         if m:
@@ -412,6 +821,7 @@ def parse_source(path: str) -> SourceInfo:
             for part in re.split(r",(?![^()]*\))", m.group(1)):
                 name, _, qualifiers = part.strip().partition(":")
                 info.globals[name.strip().lstrip("$")] = (number, qualifiers.strip().lower())
+                info.global_decls.setdefault(name.strip().lstrip("$"), []).append((number, qualifiers.strip().lower()))
             continue
         m = re.match(rf"^\s*({IDENT})\s*:", code)
         if m and not code.lstrip().startswith("%"):
@@ -472,27 +882,48 @@ def _resolve_item_paths(project: Project, include: str) -> List[str]:
 
 
 def project_sources(project: Project) -> Tuple[List[str], List[str]]:
-    """Compute the project's AsmSource and AsmInclude files the way the SDK's defaults do.
+    """Compute the project's NASM sources and include files the way the SDK's defaults do.
 
     Args:
         project: The project.
 
     Returns:
-        (sources, include files) as absolute paths: default globs (unless
-        EnableDefaultAsmItems=false) plus explicit Include items, minus Remove items.
+        (NASM sources, include files) as absolute paths: default globs (unless
+        EnableDefaultAsmItems=false) plus explicit Include items, minus Remove items. GNU
+        syntax sources (.s) are in project_all_sources.
     """
+    sources, includes = [], []
+    for path in project_all_sources(project):
+        if path.lower().endswith(".asm"):
+            sources.append(path)
     defaults = (project.prop("EnableDefaultAsmItems") or "true").lower() != "false"
-    sources = _walk_files(project.dir, ".asm") if defaults else []
     includes = _walk_files(project.dir, ".inc") if defaults else []
-    for item in project.items.get("AsmSource", []):
-        sources.extend(_resolve_item_paths(project, item.get("Include", "")))
     for item in project.items.get("AsmInclude", []):
         includes.extend(_resolve_item_paths(project, item.get("Include", "")))
+    return sources, list(dict.fromkeys(os.path.normpath(p) for p in includes))
+
+
+def project_all_sources(project: Project) -> List[str]:
+    """Every AsmSource of the project, NASM (.asm) and GNU syntax (.s), as the SDK collects them.
+
+    Since 0.3.0 the default sources are **/*.asm and **/*.s.
+
+    Args:
+        project: The project.
+
+    Returns:
+        Absolute paths: default globs (unless EnableDefaultAsmItems=false), explicit Include
+        items, minus Remove items, de-duplicated (a duplicate is ASM0024 in the SDK, reported
+        separately).
+    """
+    defaults = (project.prop("EnableDefaultAsmItems") or "true").lower() != "false"
+    sources = (_walk_files(project.dir, ".asm") + _walk_files(project.dir, ".s")) if defaults else []
+    for item in project.items.get("AsmSource", []):
+        sources.extend(_resolve_item_paths(project, item.get("Include", "")))
     removed = set()
     for item in project.items.get("AsmSource", []):
         removed.update(os.path.normcase(p) for p in _resolve_item_paths(project, item.get("Remove", "")))
-    sources = [s for s in dict.fromkeys(os.path.normpath(p) for p in sources) if os.path.normcase(s) not in removed]
-    return sources, list(dict.fromkeys(os.path.normpath(p) for p in includes))
+    return [s for s in dict.fromkeys(os.path.normpath(p) for p in sources) if os.path.normcase(s) not in removed]
 
 
 def include_dirs(project: Project, referenced: List[Project]) -> List[Tuple[str, str]]:
@@ -500,7 +931,9 @@ def include_dirs(project: Project, referenced: List[Project]) -> List[Tuple[str,
 
     NASM 3.02 tries the working directory (the project folder) first, then each -I folder:
     include/, the project folder, AsmIncludeDirectory items, then referenced projects'
-    public folders (include/ or their project folder).
+    public folders (include/ or their project folder). The SDK's own include folder
+    (asmsdk.inc, asmsdk-gnu.inc) comes last; it is not on disk here, so asmsdk.inc is treated
+    as found.
 
     Args:
         project: The project being assembled.
@@ -521,11 +954,25 @@ def include_dirs(project: Project, referenced: List[Project]) -> List[Tuple[str,
     return dirs
 
 
+def describe_oses(oses: Iterable[str]) -> str:
+    """Name a set of platforms for a message: "macOS (macho64) and Windows (win64)".
+
+    Args:
+        oses: OS names from OSES.
+
+    Returns:
+        The labels in OSES order, joined with commas and "and".
+    """
+    labels = [OS_LABEL[o] for o in OSES if o in set(oses)]
+    return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
+
+
 class Linter:
     """Runs every check over a set of projects and collects Findings.
 
     One instance per run: it caches parsed projects and sources so a library referenced by
-    several projects is read once.
+    several projects is read once, and it learns which RIDs a RID-less project inherits from
+    the projects that reference it (index_referrers).
     """
 
     def __init__(self) -> None:
@@ -533,6 +980,8 @@ class Linter:
         self._projects: Dict[str, Project] = {}
         self._sources: Dict[str, SourceInfo] = {}
         self._reported: Set[Tuple[str, str, int]] = set()
+        self._referrer_rids: Dict[str, Set[str]] = {}
+        self._symbol_lists: Optional[Dict[str, Set[str]]] = None
 
     # -- infrastructure ---------------------------------------------------------------------
 
@@ -615,6 +1064,80 @@ class Linter:
                 result.extend(self.references(ref, seen))
         return result
 
+    def index_referrers(self, projects: List[Project]) -> None:
+        """Record, for every referenced project, the RIDs its referencing projects declare.
+
+        A project that names no RID is built for what its referencing projects ask for, so
+        its sources are judged for those RIDs. Must run before check_project.
+
+        Args:
+            projects: Every project of the run (their references are followed transitively).
+        """
+        for project in projects:
+            declared = [r for r in project.declared_rids if r in RIDS]
+            if not declared:
+                continue
+            for ref in self.references(project):
+                self._referrer_rids.setdefault(os.path.normcase(ref.path), set()).update(declared)
+
+    def effective_rids(self, project: Project) -> Tuple[List[str], bool]:
+        """The RIDs a project's sources are judged for.
+
+        Args:
+            project: The project.
+
+        Returns:
+            (rids, assumed): its own known RIDs; else those of the projects that reference it;
+            else all seven with assumed=True (nothing here says which RIDs it builds, so
+            platform-specific findings are warnings).
+        """
+        own = [r for r in project.declared_rids if r in RIDS]
+        if own:
+            return own, False
+        inherited = self._referrer_rids.get(os.path.normcase(project.path))
+        if inherited:
+            return sorted(inherited), False
+        return list(RIDS), True
+
+    def symbol_lists(self, project: Project) -> Dict[str, Set[str]]:
+        """The SDK's macOS and Windows C library lists, read once per run (see load_sdk_symbol_lists).
+
+        Args:
+            project: A project whose global.json names the SDK version.
+
+        Returns:
+            The lists found (possibly none).
+        """
+        if self._symbol_lists is None:
+            version = self._pinned_version(project) or DOCUMENTED_SDK_VERSION
+            self._symbol_lists = load_sdk_symbol_lists(version)
+        return self._symbol_lists
+
+    def _pinned_version(self, project: Project) -> Optional[str]:
+        """The AsmFoundation.Sdk version the nearest global.json (or the Sdk attribute) pins.
+
+        Args:
+            project: The project.
+
+        Returns:
+            The version, or None when none is readable.
+        """
+        if "/" in project.sdk:
+            return project.sdk.split("/", 1)[1]
+        folder = project.dir
+        while True:
+            candidate = os.path.join(folder, "global.json")
+            if os.path.isfile(candidate):
+                try:
+                    with open(candidate, encoding="utf-8-sig") as f:
+                        return ((json.load(f).get("msbuild-sdks") or {}).get("AsmFoundation.Sdk"))
+                except (OSError, json.JSONDecodeError):
+                    return None
+            parent = os.path.dirname(folder)
+            if parent == folder:
+                return None
+            folder = parent
+
     # -- repository-level checks --------------------------------------------------------------
 
     def check_global_json(self, project: Project) -> None:
@@ -626,7 +1149,7 @@ class Linter:
         Args:
             project: The project whose SDK resolution is checked.
         """
-        if "/" in project.sdk:  # Sdk="AsmFoundation.Sdk/0.2.0" needs no global.json entry
+        if "/" in project.sdk:  # Sdk="AsmFoundation.Sdk/0.3.0" needs no global.json entry
             return
         folder = project.dir
         while True:
@@ -686,6 +1209,8 @@ class Linter:
         """
         p = project
         line = p.prop_lines.get
+        rids, assumed = self.effective_rids(p)
+        oses = {RIDS[r][0] for r in rids}
         toolchain = p.prop("AsmToolchain")
         if toolchain and toolchain not in ("Bundled", "System"):
             self.add("error", "ASMPRJ009", p.path, line("AsmToolchain", 0),
@@ -695,7 +1220,7 @@ class Linter:
             self.add("warning", "ASMPRJ010", p.path, line("OutputType", 0),
                      f"OutputType='{output_type}' is not an AsmSdk kind; it builds a shared library",
                      "Library, StaticLibrary, Exe or Objects")
-        # 0.1.0's own names: 0.2.0 fails the build with ASM0100-ASM0108, one error per setting.
+        # 0.1.0's own names: 0.2.0 and later fail the build with ASM0100-ASM0108, one error per setting.
         for name, replacement in REMOVED_SETTINGS.items():
             if p.prop_entries(name):
                 self.add("error", "ASMPRJ013", p.path, line(name, 0),
@@ -705,14 +1230,31 @@ class Linter:
             self.add("error", "ASMPRJ013", p.path, line("AsmDefine", 0),
                      "AsmDefine items were removed in AsmFoundation.Sdk 0.2.0: the build fails with an ASM01xx error",
                      "list the symbols in DefineConstants (NAME or NAME=VALUE, semicolon-separated)")
+        # 0.2.0's platform settings: 0.3.0 no longer reads them, so the project names no RID.
+        for name, replacement in REMOVED_IN_030.items():
+            if p.prop_entries(name):
+                self.add("error", "ASMPRJ013", p.path, line(name, 0),
+                         f"{name} was removed in AsmFoundation.Sdk 0.3.0 and is ignored: without RuntimeIdentifiers the build stops with ASM0010",
+                         f"use {replacement}")
+        self._check_runtime_identifiers(p)
+        # Target frameworks are AsmSdk's two names only: a .NET name (netstandard2.0, the hidden
+        # default of 0.1.0) or a typo stops the build with ASM0003.
+        for framework in p.frameworks:
+            if "$(" not in framework and framework not in ("freestanding", "libc"):
+                self.add("error", "ASMPRJ018", p.path, line("TargetFrameworks", line("TargetFramework", 0)),
+                         f"TargetFramework '{framework}' is not an AsmSdk target framework: the build stops with ASM0003",
+                         "freestanding (no C library; the default) or libc (the platform's C library), or TargetFrameworks=freestanding;libc")
         if p.libc_only and p.kind in ("StaticLibrary", "Objects"):
             self.add("info", "ASMPRJ011", p.path, line("TargetFramework", 0),
-                     f"TargetFramework=libc links nothing into {p.kind}, but it says the code needs glibc: "
+                     f"TargetFramework=libc links nothing into {p.kind}, but it says the code needs the C library: "
                      "a freestanding project cannot reference this one (NU1201)",
-                     "keep it when the code calls libc; otherwise freestanding (or TargetFrameworks=freestanding;libc) lets every project use it")
-        if p.runtime == "Libc" and p.kind == "Executable" and p.prop("StartupObject"):
+                     "keep it when the code calls the C library; otherwise freestanding (or TargetFrameworks=freestanding;libc) lets every project use it")
+        # On Linux and Windows the SDK's startup code initializes the C library; macOS's dyld
+        # does that itself and calls StartupObject as main.
+        if p.runtime == "Libc" and p.kind == "Executable" and p.prop("StartupObject") and oses & {"Linux", "Windows"}:
             self.add("warning", "ASMPRJ012", p.path, line("StartupObject", 0),
-                     "StartupObject on a libc executable drops the SDK's crt1: glibc is never initialized unless your entry calls __libc_start_main",
+                     "StartupObject on a libc executable drops the SDK's startup code on Linux and Windows: "
+                     "the C library is never initialized unless your entry does it (__libc_start_main on Linux)",
                      "remove StartupObject and define main")
         for item in p.item_entries("LinkerArg"):
             value, condition = item.get("Include", ""), item.get("Condition", "")
@@ -723,16 +1265,17 @@ class Linter:
         props_file = self._directory_build_props(p)
         flags = " ".join(v for v, _ in p.prop_entries("AsmFlags")) + " " + " ".join(
             v for v, _ in (props_file.prop_entries("AsmFlags") if props_file else []))
-        if "-Xvc" not in flags:
-            self.add("info", "ASMPRJ008", p.path, 0,
-                     "NASM messages are not MSBuild diagnostics by default (only MSB3073 is counted; -v:q hides NASM's line)",
-                     "<AsmFlags>-Xvc</AsmFlags>, best in Directory.Build.props under Condition=\"'$(UsingAsmFoundationSdk)' == 'true'\"")
+        if "-Xvc" in flags:
+            self.add("info", "ASMPRJ008", p.path, line("AsmFlags", 0),
+                     "AsmFlags -Xvc is redundant: since 0.3.0 the SDK passes -Xvc to NASM itself, so its messages are MSBuild errors and warnings with file and line",
+                     "remove -Xvc from AsmFlags")
         link_flags = " ".join(i.get("Include", "") for i in p.item_entries("LinkerArg")) + " " + " ".join(
             i.get("Include", "") for i in (props_file.item_entries("LinkerArg") if props_file else []))
-        if p.kind == "SharedLibrary" and "-z defs" not in link_flags and "--no-undefined" not in link_flags:
+        # Only ELF links a shared library with undefined symbols; lld-link and ld64.lld refuse.
+        if p.kind == "SharedLibrary" and "Linux" in oses and "-z defs" not in link_flags and "--no-undefined" not in link_flags:
             self.add("info", "ASMPRJ007", p.path, 0,
-                     "a shared library links with undefined symbols; a misspelled extern fails only when the library loads",
-                     '<LinkerArg Include="-z defs" />')
+                     "a Linux shared library links with undefined symbols; a misspelled extern fails only when the library loads",
+                     '<LinkerArg Include="-z defs" Condition="$(RuntimeIdentifier.StartsWith(\'linux-\'))" />')
         referenced = self.references(p)
         # NuGet names each project of a restore graph by its PackageId, which defaults to the
         # AssemblyName: two projects of one graph with the same name fail restore.
@@ -750,13 +1293,11 @@ class Linter:
                 self.add("error", "ASMREF003", p.path, line("ProjectReference", 0),
                          f"a freestanding build references {os.path.basename(ref.path)}, which targets only libc: restore fails with NU1201",
                          "make this project libc, or let the reference also build freestanding (TargetFrameworks=freestanding;libc)")
-            if ref.kind == "Objects":
-                self.add("error", "ASMREF002", p.path, line("ProjectReference", 0),
-                         f"reference to {os.path.basename(ref.path)} (OutputType=Objects): AsmSdk passes its object paths relative to the wrong project (a known issue), and the link fails with 'cannot open .../x.o'",
-                         "make the referenced project a StaticLibrary")
-            elif p.kind == "Executable" and "freestanding" in p.frameworks and not ref.produces_static and ref.kind == "SharedLibrary":
+            # A Linux freestanding program links -static; Windows links a DLL's import library.
+            if (p.kind == "Executable" and "freestanding" in p.frameworks and "Linux" in oses
+                    and not ref.produces_static and ref.kind == "SharedLibrary"):
                 self.add("error", "ASMREF001", p.path, line("ProjectReference", 0),
-                         f"a freestanding executable links -static, but {os.path.basename(ref.path)} produces only a .so: 'attempted static link of dynamic object'",
+                         f"a freestanding Linux executable links -static, but {os.path.basename(ref.path)} produces only a .so: 'attempted static link of dynamic object'",
                          f"in {os.path.basename(ref.path)}: <AsmProduceStaticLibrary>true</AsmProduceStaticLibrary> or OutputType StaticLibrary")
         for item in p.items.get("AsmIncludeDirectory", []):
             for folder in _resolve_item_paths(p, item.get("Include", "")):
@@ -772,10 +1313,39 @@ class Linter:
         self._check_public_includes(p)
         self.check_sources(p, referenced)
 
+    def _check_runtime_identifiers(self, p: Project) -> None:
+        """The 0.3.0 RID rules: a list to build, RIDs AsmSdk knows, no freestanding macOS program.
+
+        Args:
+            p: The project.
+        """
+        line = p.prop_lines.get
+        declared = p.declared_rids
+        where = line("RuntimeIdentifiers", line("RuntimeIdentifier", 0))
+        if not declared:
+            top_level = p.kind in ("SharedLibrary", "Executable")
+            inherited = self._referrer_rids.get(os.path.normcase(p.path))
+            if not inherited:
+                self.add("warning" if top_level else "info", "ASMPRJ015", p.path, 0,
+                         "names no RuntimeIdentifiers: built alone it stops with ASM0010; it builds only the RIDs a referencing project asks for "
+                         "(a .NET app's RID, or RuntimeIdentifiers on the ProjectReference)",
+                         "<RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers> (any of: " + ", ".join(RIDS) + ")"
+                         + ("" if top_level else "; a static helper may omit them on purpose"))
+        for rid in declared:
+            if rid not in RIDS:
+                self.add("error", "ASMPRJ016", p.path, where,
+                         f"'{rid}' is not a RID AsmSdk builds: the build stops with ASM0011",
+                         "use " + ", ".join(RIDS))
+        if (p.kind == "Executable" and "freestanding" in p.frameworks
+                and any(RIDS.get(r, ("",))[0] == "MacOS" for r in declared)):
+            self.add("error", "ASMPRJ017", p.path, where,
+                     "a freestanding executable for macOS: Apple supports no static executables, and the build stops with ASM0015",
+                     "<TargetFramework>libc</TargetFramework> for a macOS program, or drop the osx RIDs")
+
     def _directory_build_props(self, project: Project) -> Optional[Project]:
         """The Directory.Build.props MSBuild imports for a project (the nearest one above it).
 
-        Solution-wide asm settings (AsmFlags -Xvc, a LinkerArg -z defs) usually live there, so
+        Solution-wide asm settings (a LinkerArg -z defs) usually live there, so
         recommendations must look at it before suggesting them for every project.
 
         Args:
@@ -819,25 +1389,66 @@ class Linter:
 
     # -- source checks -----------------------------------------------------------------------
 
-    def check_sources(self, p: Project, referenced: List[Project]) -> None:
-        """Run the per-file NASM checks for one project's sources.
-
-        Symbol resolution looks at this project and everything it references, because the
-        linker sees all of their outputs; packages cannot be read, so with a PackageReference
-        present an unresolved symbol is only a warning.
+    def _check_source_selection(self, p: Project, rids: List[str], assumed: bool) -> Dict[str, FrozenSet[str]]:
+        """Mirror the SDK's per-RID source selection, report its errors, and map each NASM source to its OSes.
 
         Args:
             p: The project.
-            referenced: Its .asmproj references, transitively.
+            rids: The RIDs it is judged for (effective_rids).
+            assumed: Whether those RIDs are assumed (then ASM0023 is not reported).
+
+        Returns:
+            NASM source path (normcase) -> the OSes it is assembled for; a source no RID
+            selects maps to an empty set.
         """
-        sources, includes = project_sources(p)
-        dirs = include_dirs(p, referenced)
-        project_files = sources + includes
-        infos = {s: self.source(s) for s in project_files if os.path.isfile(s)}
-        # Symbols defined anywhere in this project or the projects it references.
+        all_sources = project_all_sources(p)
+        # An explicit AsmSource item for a file the default **/*.asm and **/*.s globs already
+        # include makes it a source twice: ASM0024 (project_all_sources de-duplicates, so the
+        # explicit items are compared with the globs here).
+        if (p.prop("EnableDefaultAsmItems") or "true").lower() != "false":
+            by_glob = {os.path.normcase(s) for s in _walk_files(p.dir, ".asm") + _walk_files(p.dir, ".s")}
+            for item in p.items.get("AsmSource", []):
+                for path in _resolve_item_paths(p, item.get("Include", "")):
+                    if os.path.normcase(path) in by_glob:
+                        self.add("error", "ASMSRC017", p.path, p.prop_lines.get("AsmSource", 0),
+                                 f"{os.path.relpath(path, p.dir)} is an AsmSource twice, from the default **/*.asm and **/*.s globs and from this item: the build stops with ASM0024",
+                                 "remove the explicit AsmSource item, or set EnableDefaultAsmItems=false and list every source yourself")
+        for path in all_sources:
+            _, qualifier, language = split_source_name(path)
+            if language == "Nasm" and qualifier and qualifier_is_arm64_only(qualifier):
+                self.add("error", "ASMSRC014", path, 0,
+                         f"a NASM file (.asm) qualified for '{qualifier}', which names ARM64 only: NASM assembles x86-64 only, and the build stops with ASM0021",
+                         "write ARM64 code in GNU syntax, in a .s file (x." + qualifier + ".s)")
+        selected_by: Dict[str, Set[str]] = {}
+        for rid in rids:
+            selected, ties = select_sources(all_sources, rid)
+            for group in ties:
+                self.add("error", "ASMSRC015", group[0], 0,
+                         f"for {rid}, {' and '.join(os.path.basename(g) for g in group)} apply equally: the build stops with ASM0020",
+                         f"keep one, or qualify one more narrowly (name.{rid}{os.path.splitext(group[0])[1]})")
+            if all_sources and not selected and not ties and not assumed:
+                self.add("error", "ASMSRC016", p.path, p.prop_lines.get("RuntimeIdentifiers", 0),
+                         f"no source of this project builds {rid}: the build stops with ASM0023"
+                         + (" (NASM files build the x64 RIDs; ARM64 needs GNU-syntax .s files)" if RIDS[rid][1] == "arm64" else ""),
+                         f"add a source for {rid} (for example name.{rid}" + (".s" if RIDS[rid][1] == "arm64" else ".asm") + f"), or remove {rid} from RuntimeIdentifiers")
+            for path in selected:
+                selected_by.setdefault(os.path.normcase(path), set()).add(RIDS[rid][0])
+        return {os.path.normcase(s): frozenset(selected_by.get(os.path.normcase(s), set()))
+                for s in all_sources if s.lower().endswith(".asm")}
+
+    def _defined_symbols(self, projects: List[Project]) -> Tuple[Set[str], Set[str]]:
+        """The global symbols a set of projects' NASM sources define, and which of them are hidden.
+
+        Args:
+            projects: Projects whose sources to read.
+
+        Returns:
+            (defined, hidden): names with a global declaration (or asmsdk.inc macro) and a
+            label; hidden = those whose visibility NASM actually applies.
+        """
         defined: Set[str] = set()
         hidden: Set[str] = set()
-        for ref in [p] + referenced:
+        for ref in projects:
             for path in project_sources(ref)[0]:
                 if os.path.isfile(path):
                     info = self.source(path)
@@ -845,10 +1456,41 @@ class Linter:
                         if name in info.labels:
                             defined.add(name)
                             # Only a visibility NASM actually applies makes PLT/GOT unnecessary.
-                            if visibility(qualifiers)[0]:
+                            # Any declaration counts, not only the last: a symbol hidden under
+                            # %ifdef LINUX is followed by its macOS and Windows forms, which
+                            # carry no ELF visibility but do not change Linux's.
+                            decls = info.global_decls.get(name, [(0, qualifiers)])
+                            if any(visibility(q)[0] for _, q in decls):
                                 hidden.add(name)
+        return defined, hidden
+
+    def check_sources(self, p: Project, referenced: List[Project]) -> None:
+        """Run the per-file NASM checks for one project's sources.
+
+        Symbol resolution looks at this project and everything it references, because the
+        linker sees all of their outputs; packages cannot be read, so with a PackageReference
+        present an unresolved symbol is only a warning. Since 0.3.0 Linux shared libraries
+        link -Bsymbolic: a call or data reference within the library (this project, and the
+        static libraries and objects it links in) needs no PLT or GOT; only another library's
+        symbols do.
+
+        Args:
+            p: The project.
+            referenced: Its .asmproj references, transitively.
+        """
+        rids, assumed = self.effective_rids(p)
+        file_oses = self._check_source_selection(p, rids, assumed)
+        sources, includes = project_sources(p)
+        dirs = include_dirs(p, referenced)
+        project_files = sources + includes
+        infos = {s: self.source(s) for s in project_files if os.path.isfile(s)}
+        # Symbols defined anywhere in this project or the projects it references, and those
+        # linked into this project's own image (its sources, plus static libraries and objects).
+        defined, hidden = self._defined_symbols([p] + referenced)
+        linked_in, _ = self._defined_symbols([p] + [r for r in referenced if r.produces_static or r.kind == "Objects"])
         libc_extra = {i.get("Include", "").strip() for i in p.items.get("AsmLibcSymbol", [])}
         has_packages = bool(p.items.get("PackageReference"))
+        lists = self.symbol_lists(p)
         included_asm: Set[str] = set()
         entry_found = False
         entry = p.prop("StartupObject") or ("main" if p.runtime == "Libc" and p.kind == "Executable" else "_start")
@@ -856,6 +1498,7 @@ class Linter:
             info = infos.get(path)
             if info is None:
                 continue
+            oses = file_oses.get(os.path.normcase(path), frozenset())
             local_incs = self._resolve_includes(p, info, dirs, included_asm)
             externs = set(info.externs)
             default_rel = info.default_rel
@@ -866,46 +1509,43 @@ class Linter:
             externs -= info.labels  # "extern x" plus a definition in the same file = a definition
             if entry in info.globals and entry in info.labels:
                 entry_found = True
-            self._check_source_lines(p, info, externs, hidden, default_rel)
-            if not info.has_gnu_stack:
+            if not oses:
+                # Not built for any RID judged here (x.win.asm in a Linux-only project): nothing
+                # it says reaches an assembler, so its directives are not judged.
+                continue
+            self._check_source_lines(p, info, externs, hidden, linked_in, default_rel, oses, assumed)
+            if "Linux" in oses and not info.has_gnu_stack:
                 self.add("info", "ASMSRC006", path, 0,
                          "no .note.GNU-stack section: the SDK links with -z noexecstack, but other linkers of this object or archive may mark the stack executable",
-                         "section .note.GNU-stack noalloc noexec nowrite progbits")
-            for name, (number, qualifiers) in info.globals.items():
-                ignored = visibility(qualifiers)[1]
-                if ignored:
-                    self.add("warning", "ASMSRC013", path, number,
-                             f"'{ignored}' after the size is ignored by NASM (no warning): '{name}' stays exported and preemptible",
-                             f"put the visibility first: global {name}:{qualifiers.split()[0] if qualifiers.split() else 'function'} {ignored} <size>")
-                if name.lower() in KEYWORD_NAMES:
-                    self.add("error", "ASMSRC008", path, number,
-                             f"symbol '{name}' is a NASM keyword or mnemonic and does not parse as a label",
-                             f"write it as ${name} in the definition and every reference")
-                elif not re.search(r"\b(function|data|object|func)\b", qualifiers) and name in info.labels:
-                    self.add("info", "ASMSRC007", path, number,
-                             f"'global {name}' has no type: it is exported with type NONE and size 0",
-                             f"global {name}:function ({name}.end - {name})  ; or :data <size>")
-            # Undefined references: externs no source here (or in references) defines.
+                         "%ifdef LINUX / section .note.GNU-stack noalloc noexec nowrite progbits / %endif")
+            self._check_globals(p, info, oses, assumed)
+            # Undefined references: externs no source here (or in references) defines, and no
+            # C library list of an OS this file builds provides.
             for name in sorted(externs - defined):
-                if p.runtime == "Libc" and (name in LIBC_STUB_FUNCTIONS or name in libc_extra):
+                # Judge each extern only on the OSes its declaration is assembled for (externs
+                # from include files count everywhere: their guards are the include's own).
+                name_oses = oses & info.extern_oses.get(name, ALL_OSES)
+                missing_on = self._missing_from_c_libraries(p, name, name_oses, lists, libc_extra)
+                if not missing_on:
                     continue
                 number = next((n for n, c in info.lines if re.search(rf"\bextern\b.*\b{re.escape(name)}\b", c)), 0)
+                where = "" if missing_on == oses else f" on {describe_oses(missing_on)}"
                 if p.kind == "Executable" and p.runtime == "Libc":
                     self.add("warning" if has_packages else "error", "ASMSRC012", path, number,
-                             f"'{name}' is not defined in this project, its references or the libc stub: the link fails with 'undefined symbol: {name}'"
+                             f"'{name}' is not defined in this project, its references or the C library list{where}: the link fails with 'undefined symbol: {name}'"
                              + (" unless a package defines it" if has_packages else ""),
-                             f'a libc function: <AsmLibcSymbol Include="{name}" />; otherwise add the reference or package that defines it')
+                             f'a C library function: <AsmLibcSymbol Include="{name}" /> (on Windows it must be a ucrtbase.dll export); otherwise add the reference or package that defines it')
                 elif p.kind == "Executable":
                     self.add("warning" if has_packages else "error", "ASMSRC012", path, number,
-                             f"'{name}' is not defined in this project or its references: the link fails with 'undefined symbol: {name}'"
+                             f"'{name}' is not defined in this project or its references{where}: the link fails with 'undefined symbol: {name}'"
                              + (" unless a package defines it" if has_packages else ""),
                              "add the ProjectReference or PackageReference that defines it, or fix the name")
                 elif p.kind == "SharedLibrary" and not has_packages:
                     self.add("info", "ASMSRC012", path, number,
                              f"'{name}' is not defined in this project, its references"
-                             + (" or the libc stub" if p.runtime == "Libc" else "")
-                             + ": a shared library links anyway and fails at load time if nothing provides it",
-                             '<LinkerArg Include="-z defs" /> turns this into a link error')
+                             + (" or the C library list" if p.runtime == "Libc" else "") + where
+                             + ": a Linux shared library links anyway and fails at load time; Windows and macOS stop the link",
+                             '<LinkerArg Include="-z defs" /> turns this into a link error on Linux too')
         for path in sorted(included_asm):
             if path in sources:
                 info = infos.get(path) or self.source(path)
@@ -916,9 +1556,154 @@ class Linter:
                          f'rename it to .inc, or <AsmSource Remove="{os.path.relpath(path, p.dir)}" />')
         if p.kind == "Executable" and sources and not entry_found:
             self.add("error", "ASMSRC011", p.path, 0,
-                     f"no source defines 'global {entry}' with a label: "
-                     + ("the SDK's crt1 calls main" if entry == "main" else f"the executable's entry point is {entry}"),
-                     f"global {entry}:function, and the {entry}: label")
+                     f"no source defines '{entry}' (a global label, or FUNCTION {entry}): "
+                     + ("the SDK's startup code calls main" if entry == "main" else f"the executable's entry point is {entry}"),
+                     f"FUNCTION {entry} (asmsdk.inc), or global {entry} and the {entry}: label")
+
+    def _missing_from_c_libraries(self, p: Project, name: str, oses: FrozenSet[str],
+                                  lists: Dict[str, Set[str]], libc_extra: Set[str]) -> FrozenSet[str]:
+        """The OSes on which an extern defined by no project here has no provider either.
+
+        Linux freestanding code has none; Windows always links kernel32.dll (and, for libc,
+        ucrtbase.dll and the SDK's stdio wrappers); macOS libc links libSystem. An OS whose list
+        the linter could not read (the SDK package is not restored) is never reported.
+
+        Args:
+            p: The project.
+            name: The undefined symbol.
+            oses: The OSes the file builds.
+            lists: load_sdk_symbol_lists' result.
+            libc_extra: The project's AsmLibcSymbol names (added on every OS).
+
+        Returns:
+            The OSes that will fail to link it (empty when every OS provides it or cannot tell).
+        """
+        if name in libc_extra:
+            return frozenset()
+        missing = set()
+        for os_name in oses:
+            if os_name == "Linux":
+                if not (p.runtime == "Libc" and name in LIBC_STUB_FUNCTIONS):
+                    missing.add(os_name)
+            elif os_name == "Windows":
+                provider = lists.get("WindowsLibc" if p.runtime == "Libc" else "WindowsKernel")
+                if provider is not None and name not in provider:
+                    missing.add(os_name)
+            elif os_name == "MacOS":
+                if p.runtime != "Libc":
+                    missing.add(os_name)
+                elif "MacOS" in lists and name not in lists["MacOS"]:
+                    missing.add(os_name)
+        return frozenset(missing)
+
+    def _check_globals(self, p: Project, info: SourceInfo, oses: FrozenSet[str], assumed: bool) -> None:
+        """The `global` declarations: names, types, visibility, and what each format accepts.
+
+        Args:
+            p: The project (a Windows DLL exports only what it is told to).
+            info: The file.
+            oses: The OSes the file is assembled for.
+            assumed: Whether the project's RIDs are assumed (findings become warnings).
+        """
+        path = info.path
+        for name, (last_number, last_qualifiers) in info.globals.items():
+            if name.lower() in KEYWORD_NAMES:
+                self.add("error", "ASMSRC008", path, info.global_decls.get(name, [(last_number, last_qualifiers)])[0][0],
+                         f"symbol '{name}' is a NASM keyword or mnemonic and does not parse as a label",
+                         f"write it as ${name} in the definition and every reference")
+                continue
+            if name in info.macro_symbols:
+                continue
+            # Each declaration is judged for the OSes its guards leave it on: a symbol written
+            # once per OS has a line per guard, and a mistake on any of them matters.
+            decls = info.global_decls.get(name, [(last_number, last_qualifiers)])
+            hidden_on, exported_on = self._symbol_visibility(info, decls, oses)
+            # Meant to be internal: hidden somewhere, or an attempt NASM ignored ('data 8
+            # hidden', ASMSRC013's finding), whose fix is to move the word, not to export it.
+            meant_internal = bool(hidden_on) or any(visibility(q)[1] in ("hidden", "internal") for _, q in decls)
+            for number, qualifiers in decls:
+                line_on, uncertain, in_macro = info.line_oses.get(number, (ALL_OSES, False, False))
+                if in_macro:
+                    continue
+                on = oses & line_on
+                words = re.findall(r"[a-z_]+", qualifiers)
+                for word in dict.fromkeys(words):
+                    rejected = REJECTED_SYMBOL_WORDS.get(word, frozenset()) & on
+                    if rejected:
+                        self.add("warning" if uncertain or assumed else "error", "ASMSRC019", path, number,
+                                 f"'global {name}:{qualifiers}': NASM's {describe_oses(rejected)} output stops at '{word}' (unrecognised symbol type)",
+                                 "FUNCTION / HIDDEN_FUNCTION from asmsdk.inc write each format's own directives; or keep this line in %ifdef LINUX (or a name.linux.asm file)")
+                if "Linux" in on:
+                    ignored = visibility(qualifiers)[1]
+                    if ignored:
+                        self.add("warning", "ASMSRC013", path, number,
+                                 f"'{ignored}' after the size is ignored by NASM (no warning): '{name}' stays exported",
+                                 f"put the visibility first: global {name}:{qualifiers.split()[0] if qualifiers.split() else 'function'} {ignored} <size>")
+                if on == frozenset({"Linux"}) and not re.search(r"\b(function|data|object)\b", qualifiers) and name in info.labels:
+                    self.add("info", "ASMSRC007", path, number,
+                             f"'global {name}' has no type: it is exported with type NONE and size 0",
+                             f"global {name}:function ({name}.end - {name})  ; or :data <size>")
+                # A Windows DLL exports only what a .drectve directive (FUNCTION) or the ExportsFile
+                # names: a plain global is linkable but not exported, and .NET then fails with
+                # EntryPointNotFoundException. A symbol hidden on Linux or private_extern on macOS
+                # is meant to be internal, and there a plain global is exactly right; a line
+                # win64's NASM stops on (ASMSRC019 above) exports nothing to judge.
+                rejected_on_windows = any("Windows" in REJECTED_SYMBOL_WORDS.get(word, frozenset()) for word in words)
+                if (p.kind == "SharedLibrary" and "Windows" in on and not p.prop("ExportsFile") and not info.manual_exports
+                        and name in info.labels and not visibility(qualifiers)[0] and not meant_internal
+                        and not rejected_on_windows):
+                    is_data = any(re.search(r"\b(data|object)\b", q) for _, q in decls)
+                    self.add("warning", "ASMSRC021", path, number,
+                             f"'{name}' is not exported from the Windows DLL: a DLL exports only what a .drectve directive or the ExportsFile names",
+                             f"an ExportsFile that lists it (FUNCTION is for functions)" if is_data else
+                             f"FUNCTION {name} (asmsdk.inc writes the directive), or an ExportsFile that lists it; "
+                             f"if it is internal, HIDDEN_FUNCTION {name} says so on every OS")
+            # Internal on one OS and exported on another is a port that hid the symbol where it
+            # was first written: the other library still exports it, and callers may bind to it.
+            for os_name, number in sorted(exported_on.items()):
+                if hidden_on and os_name not in hidden_on:
+                    is_data = any(re.search(r"\b(data|object)\b", q) for _, q in decls)
+                    fix = (f"global {name}:private_extern under %ifdef MACOS" if os_name == "MacOS" else
+                           f"global {name}:{'data' if is_data else 'function'} hidden{' <size>' if is_data else ''} under %ifdef LINUX")
+                    self.add("warning", "ASMSRC022", path, number,
+                             f"'{name}' is internal on {describe_oses(frozenset(hidden_on))} but exported on {describe_oses(frozenset({os_name}))}",
+                             fix + ("" if is_data else f"; or HIDDEN_FUNCTION {name}, which hides it on every OS"))
+
+    @staticmethod
+    def _symbol_visibility(info: SourceInfo, decls: List[Tuple[int, str]], oses: FrozenSet[str]) -> Tuple[Set[str], Dict[str, int]]:
+        """Where a global's declarations hide it and where they leave it exported (Linux, macOS).
+
+        ELF's hidden or internal visibility hides a symbol on Linux, and private_extern hides it
+        on macOS; each output format rejects the other's word, so a declaration a format stops on
+        (ASMSRC019's finding) says nothing about that format. Windows is left out: there a plain
+        global is internal already, and only a directive or the ExportsFile exports it.
+
+        Args:
+            info: The file (its guards decide which OSes assemble each declaration).
+            decls: The symbol's declarations, as (line, lower-case qualifiers).
+            oses: The OSes the project builds this file for.
+
+        Returns:
+            (OSes where a declaration hides the symbol, OS -> line of a declaration that leaves it
+            exported there). Lines inside a %macro body count for neither: they are assembled
+            only where the macro is used.
+        """
+        hidden_on: Set[str] = set()
+        exported_on: Dict[str, int] = {}
+        for number, qualifiers in decls:
+            line_on, _, in_macro = info.line_oses.get(number, (ALL_OSES, False, False))
+            if in_macro:
+                continue
+            words = set(re.findall(r"[a-z_]+", qualifiers))
+            for os_name in sorted((oses & line_on) & {"Linux", "MacOS"}):
+                if any(os_name in REJECTED_SYMBOL_WORDS.get(word, frozenset()) for word in words):
+                    continue
+                hides = visibility(qualifiers)[0] in ("hidden", "internal") if os_name == "Linux" else "private_extern" in words
+                if hides:
+                    hidden_on.add(os_name)
+                else:
+                    exported_on.setdefault(os_name, number)
+        return hidden_on, exported_on
 
     def _resolve_includes(self, p: Project, info: SourceInfo, dirs: List[Tuple[str, str]], included_asm: Set[str]) -> List[str]:
         """Resolve a file's %include lines the way NASM will, reporting ones that won't resolve.
@@ -935,6 +1720,8 @@ class Linter:
         """
         found_files = []
         for number, name in info.includes:
+            if os.path.basename(name).lower() in ("asmsdk.inc", "asmsdk-gnu.inc"):
+                continue  # the SDK's own include folder is always on the path
             hit = None
             for folder, _ in dirs:
                 candidate = os.path.normpath(os.path.join(folder, name))
@@ -959,34 +1746,65 @@ class Linter:
                          "add the folder as AsmIncludeDirectory, the ProjectReference, or the package that ships it")
         return found_files
 
-    def _check_source_lines(self, p: Project, info: SourceInfo, externs: Set[str], hidden: Set[str], default_rel: bool) -> None:
-        """The instruction-level checks: addressing, calls, data relocations, keyword labels.
+    def _check_source_lines(self, p: Project, info: SourceInfo, externs: Set[str], hidden: Set[str],
+                            linked_in: Set[str], default_rel: bool, file_oses: FrozenSet[str], assumed: bool) -> None:
+        """The instruction-level checks: sections, `wrt`, addressing, calls, data relocations, keyword labels.
+
+        Each line is judged for the OSes it is assembled on (the file's OSes narrowed by its
+        %ifdef guards), because what fails differs: Linux rejects absolute addresses in a .so or
+        PIE at link time, macOS's NASM rejects 32-bit ones outright and the SDK's ASM0081 stops
+        fixups in read-only segments, and Windows images accept 64-bit fixups but the SDK's
+        ASM0080 stops 32-bit ones.
 
         Args:
-            p: The project (its kind decides whether PIC is required).
+            p: The project (its kind decides which outputs are linked or position-independent).
             info: The file.
             externs: Symbols this file references but does not define (own and included externs).
             hidden: Symbols defined hidden somewhere in the project (safe without PLT/GOT).
+            linked_in: Symbols defined in this project's own image (its sources and the static
+                libraries and objects it links): within a -Bsymbolic library, no PLT/GOT.
             default_rel: Whether `default rel` is in effect (this file or a local include).
+            file_oses: The OSes the file is assembled for.
+            assumed: Whether the project's RIDs are assumed (platform errors become warnings).
         """
         shared = p.kind == "SharedLibrary"
-        pic = p.pic_required
+        linked = p.kind in ("SharedLibrary", "Executable")
+        pic_linux = p.pic_required
         portable = p.kind in ("StaticLibrary", "Objects")
         section, writable = ".text", False
         for number, code in info.lines:
+            line_on, uncertain, in_macro = info.line_oses.get(number, (ALL_OSES, False, False))
+            oses = file_oses & line_on
+            if not oses:
+                continue
+            severe = "warning" if uncertain or assumed else "error"
             low = code.strip().lower()
             m = re.match(r"^\[?\s*(?:section|segment)\s+(\S+)(.*)$", low)
             if m:
                 section = m.group(1).rstrip("]")
                 attrs = m.group(2)
                 writable = section in (".data", ".bss", ".tdata", ".tbss") or bool(re.search(r"\bwrite\b", attrs)) and not re.search(r"\bnowrite\b", attrs)
-                if section == ".data.rel.ro" and not re.search(r"\bwrite\b", attrs):
+                rejected = REJECTED_SECTIONS.get(section, frozenset()) & oses
+                if rejected and not in_macro:
+                    self.add(severe, "ASMSRC018", info.path, number,
+                             f"section {m.group(1).rstrip(']')}: NASM's {describe_oses(rejected)} output stops here (unknown section name)",
+                             "%ifdef LINUX / ... / %endif around it" if section == ".note.gnu-stack" else "%ifdef WINDOWS / ... / %endif around it")
+                if section == ".data.rel.ro" and not re.search(r"\bwrite\b", attrs) and "Linux" in oses:
                     self.add("warning", "ASMSRC005", info.path, number,
                              "NASM does not know .data.rel.ro and makes it read-only: absolute addresses (dq label) in it fail to link in a .so or PIE",
                              "section .data.rel.ro progbits alloc noexec write align=8")
                 continue
             if low.startswith("%") or low.startswith("["):
                 continue
+            # `wrt ..x` special symbols exist in one format each (..plt/..got ELF, ..gotpcrel
+            # Mach-O, ..imagebase PE): NASM stops on the others.
+            if not in_macro:
+                for special in dict.fromkeys(re.findall(r"\bwrt\s+(\.\.\w+)", low)):
+                    rejected = REJECTED_WRT.get(special, frozenset()) & oses
+                    if rejected:
+                        self.add(severe, "ASMSRC020", info.path, number,
+                                 f"'wrt {special}': NASM's {describe_oses(rejected)} output has no {special} (\"symbol `{special}' not defined\")",
+                                 "call f PLT (asmsdk.inc: wrt ..plt on Linux, nothing elsewhere); for data, %ifdef per OS (..got on Linux, ..gotpcrel on macOS)")
             label_m = re.match(rf"^\s*({IDENT})\s*:", code)
             if label_m and label_m.group(1).lower() in KEYWORD_NAMES:
                 self.add("error", "ASMSRC008", info.path, number,
@@ -1006,17 +1824,30 @@ class Linter:
                 operands = body_nostr.split(directive, 1)[1] if directive in body_nostr.lower() else ""
                 for operand in operands.split(","):
                     ident = re.findall(IDENT, operand)
-                    names = [t for t in ident if (t.lstrip("$") in info.labels or t.lstrip("$") in externs) and not re.search(r"\$\$?|-", operand)]
-                    if names and (pic or portable):
-                        if directive == "dd":
-                            self.add("error" if pic else "warning", "ASMPIC005", info.path, number,
-                                     f"'dd {names[0]}' stores a 32-bit absolute address: position-independent outputs cannot relocate it",
+                    names = [t for t in ident if (t.lstrip("$") in info.labels or t.lstrip("$") in externs) and not re.search(r"\$\$?|-|\bwrt\b", operand)]
+                    if not names:
+                        continue
+                    if directive == "dd":
+                        # 32-bit absolute: Linux PIC rejects it, the SDK's ASM0080 stops a Windows
+                        # image with one, and macOS's NASM refuses it.
+                        bad = {o for o in oses if (o == "Linux" and pic_linux) or (o == "Windows" and linked) or o == "MacOS"}
+                        if bad or portable:
+                            self.add(severe if bad else "warning", "ASMPIC005", info.path, number,
+                                     f"'dd {names[0]}' stores a 32-bit absolute address"
+                                     + (f": it fails on {describe_oses(bad)}" if bad else ": position-independent outputs cannot relocate it"),
                                      f"store an offset instead: dd {names[0]} - <table label>")
-                        elif not writable:
-                            self.add("error" if pic else "warning", "ASMPIC005", info.path, number,
-                                     f"'dq {names[0]}' in read-only {section}: 'relocation R_X86_64_64 cannot be used against local symbol' in a .so or PIE",
+                    elif not writable:
+                        # 64-bit absolute in read-only data: Linux PIC rejects it, macOS's ASM0081
+                        # stops a fixup in a read-only segment; Windows relocates it.
+                        bad = {o for o in oses if (o == "Linux" and pic_linux) or (o == "MacOS" and linked)}
+                        risky = portable and bool(oses & {"Linux", "MacOS"})
+                        if bad or risky:
+                            self.add(severe if bad else "warning", "ASMPIC005", info.path, number,
+                                     f"'dq {names[0]}' in read-only {section}"
+                                     + (f": fails on {describe_oses(bad)} (Linux: 'relocation R_X86_64_64 cannot be used against local symbol'; macOS: ASM0081)" if bad
+                                        else ": a .so, a PIE or a macOS image cannot relocate it"),
                                      "use an offset table (dd label - table) in .rodata, or move the table to .data")
-                        break
+                    break
                 continue
             if op in DATA_DIRECTIVES + RES_DIRECTIVES or op in ("times", "align", "alignb", "global", "extern", "bits", "default", "cpu", "struc", "endstruc", "istruc", "iend", "at", "equ"):
                 continue
@@ -1025,43 +1856,58 @@ class Linter:
             for mem in re.findall(r"\[([^\]]*)\]", operands):
                 mem_low = mem.lower()
                 tokens = [t for t in re.findall(IDENT, mem) if t.lower() not in OPERAND_KEYWORDS and not t.startswith("..")]
-                regs = [t for t in tokens if t.lower() in REGISTERS]
-                symbols = [t.lstrip("$") for t in tokens if t.lower() not in REGISTERS and t.lstrip("$") not in info.constants]
+                regs = [t for t in tokens if t.lower() in REGISTERS or t.lower() in ARG_REGISTER_MACROS]
+                symbols = [t.lstrip("$") for t in tokens if t.lower() not in REGISTERS and t.lower() not in ARG_REGISTER_MACROS and t.lstrip("$") not in info.constants]
                 symbols = [s for s in symbols if s in info.labels or s in externs]
                 if not symbols:
                     continue
                 explicit = re.match(r"^\s*(rel|abs)\b", mem_low) is not None or re.search(r"\b(qword|dword|word|byte)\s+(rel|abs)\b", mem_low)
                 if not regs and not explicit and not default_rel:
-                    self.add("error" if pic else "warning", "ASMPIC001", info.path, number,
+                    bad = {o for o in oses if (o == "Linux" and pic_linux) or (o == "Windows" and linked) or o == "MacOS"}
+                    reasons = []
+                    if "Linux" in bad:
+                        reasons.append("Linux: 'relocation R_X86_64_32S cannot be used against local symbol' in a .so or PIE")
+                    if "MacOS" in bad:
+                        reasons.append("macOS: NASM stops ('Mach-O 64-bit format does not support 32-bit absolute addresses')")
+                    if "Windows" in bad:
+                        reasons.append("Windows: the image needs a 32-bit fixup, and the SDK stops with ASM0080")
+                    self.add(severe if bad else "warning", "ASMPIC001", info.path, number,
                              f"[{mem.strip()}] without default rel is absolute addressing: "
-                             + ("'relocation R_X86_64_32S cannot be used against local symbol' in a .so or PIE" if pic
-                                else "NASM 3 warns 'implicit DEFAULT ABS is deprecated' (an error with TreatWarningsAsErrors)"),
+                             + ("; ".join(reasons) if reasons else "NASM 3 warns 'implicit DEFAULT ABS is deprecated' (an error with TreatWarningsAsErrors)"),
                              "put 'default rel' at the top of the file")
-                if shared and "..got" not in mem_low:
+                # Another library's data, read directly from a Linux .so (no GOT).
+                if shared and "Linux" in oses and "..got" not in mem_low:
                     for s in symbols:
-                        if s in externs and s not in hidden:
-                            self.add("error", "ASMPIC003", info.path, number,
-                                     f"[{mem.strip()}] reads '{s}' from another object or library directly: 'relocation R_X86_64_PC32 cannot be used against symbol '{s}''",
-                                     f"mov rax, [rel {s} wrt ..got] then use [rax]; or define it 'global {s}:data hidden' in this library")
+                        if s in externs and s not in hidden and s not in linked_in:
+                            self.add(severe, "ASMPIC003", info.path, number,
+                                     f"[{mem.strip()}] reads '{s}' from another library directly: Linux fails with 'relocation R_X86_64_PC32 cannot be used against symbol '{s}''",
+                                     f"%ifdef LINUX: mov rax, [rel {s} wrt ..got] then use [rax] (macOS: wrt ..gotpcrel)")
                             break
-            # calls and jumps to other objects
-            if shared and op in ("call", "jmp"):
+            # calls and jumps to another library's functions, from a Linux .so
+            if shared and "Linux" in oses and op in ("call", "jmp"):
                 target = re.match(rf"\s*({IDENT})\s*(.*)$", operands)
                 if target:
                     name = target.group(1).lstrip("$")
-                    if name in externs and name not in hidden and "..plt" not in target.group(2).lower():
-                        self.add("error", "ASMPIC002", info.path, number,
-                                 f"{op} {name}: a direct call to another object or library: 'relocation R_X86_64_PC32 cannot be used against symbol '{name}''",
-                                 f"{op} {name} wrt ..plt; or define it 'global {name}:function hidden' when it is this library's own helper")
+                    tail = target.group(2)
+                    through_plt = "..plt" in tail.lower() or re.search(r"\bPLT\b", tail) is not None
+                    if name in externs and name not in hidden and name not in linked_in and not through_plt:
+                        self.add(severe, "ASMPIC002", info.path, number,
+                                 f"{op} {name}: a direct call to another library from a Linux .so: 'relocation R_X86_64_PC32 cannot be used against symbol '{name}''",
+                                 f"{op} {name} PLT (asmsdk.inc: wrt ..plt on Linux, nothing elsewhere)")
             # absolute addresses as immediates
-            if (pic or portable) and op in ("mov", "push", "cmp", "add", "sub"):
+            if op in ("mov", "push", "cmp", "add", "sub"):
                 parts = [x.strip() for x in operands.split(",")]
                 if len(parts) >= 1:
                     src = parts[-1]
                     if re.fullmatch(IDENT, src) and (src.lstrip("$") in info.labels or src.lstrip("$") in externs) and src.lstrip("$") not in info.constants:
-                        self.add("error" if pic else "warning", "ASMPIC004", info.path, number,
-                                 f"'{op} ..., {src}' uses the absolute address of {src}: 'relocation R_X86_64_64 (or _32) cannot be used' in a .so or PIE",
-                                 f"lea <reg>, [rel {src}]" + (" ; or [rel ... wrt ..got] for another library's symbol" if src.lstrip("$") in externs else ""))
+                        bad = {o for o in oses if (o == "Linux" and pic_linux) or (o == "MacOS" and linked)}
+                        risky = portable and bool(oses & {"Linux", "MacOS"})
+                        if bad or risky:
+                            self.add(severe if bad else "warning", "ASMPIC004", info.path, number,
+                                     f"'{op} ..., {src}' uses the absolute address of {src}"
+                                     + (f": fails on {describe_oses(bad)} (Linux: 'relocation R_X86_64_64 (or _32) cannot be used'; macOS: ASM0081, a text relocation)" if bad
+                                        else ": a .so, a PIE or a macOS image cannot relocate it"),
+                                     f"lea <reg>, [rel {src}]" + (" ; or [rel ... wrt ..got] for another library's symbol" if src.lstrip("$") in externs else ""))
 
 
 def discover(paths: Iterable[str]) -> Tuple[List[str], List[str]]:
@@ -1113,10 +1959,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     linter = Linter()
     for path in solutions:
         linter.check_slnx(path)
-    for path in projects:
-        project = linter.project(path)
-        if project is None:
-            continue
+    parsed = [p for p in (linter.project(path) for path in projects) if p is not None]
+    # RID-less projects inherit the RIDs of the projects that reference them, so every project
+    # must be known before any is judged.
+    linter.index_referrers(parsed)
+    for project in parsed:
         linter.check_global_json(project)
         linter.check_project(project)
     findings = [f for f in linter.findings if not (args.no_info and f.severity == "info")]
