@@ -182,9 +182,13 @@ internal static partial int add_ints(int a, int b);
 - An asm library reached through a .NET library (app -> `Crc32C.Net` -> `Crc32C.asmproj`) is
   linked the same way; nothing is copied, a wasm app deploys no native file.
 - **The app needs .NET's native wasm build for its own .NET version:** `wasm-tools` (browser) or
-  `wasi-experimental` + WASI SDK 25.0 in `WASI_SDK_PATH` (WASI, .NET 10). A `net10.0` browser app
-  on SDK 11 needs `wasm-tools-net10`; a `net10.0` WASI app needs SDK 10 (`global.json`). Without
-  it .NET would build plain IL without the asm code, so the SDK stops with **ASM0054**.
+  `wasi-experimental` + WASI SDK 25.0 in `WASI_SDK_PATH` (WASI, .NET 10), on the SDK of that
+  .NET: a `net10.0` app needs a .NET 10 SDK (`global.json`). Not SDK 11's `wasm-tools-net10`
+  (*verified*: SDK 11.0.100 with it stopped every `net10.0` browser app in .NET's own targets,
+  even one with no asm code), and SDK 11's WASI build serves only `net11.0`. Without the
+  workload .NET would build plain IL without the asm code, so the SDK stops with **ASM0054**.
+  In CI, install the .NET 10 SDK into a folder of the runner's own (`DOTNET_INSTALL_DIR`):
+  GitHub's Windows images default to SDK 11.0.100.
 - `dotnet run` of a browser console app goes through `WasmAppHost`, which needs a
   `runtimeconfig.template.json`:
   `{ "wasmHostProperties": { "perHostConfig": [ { "name": "node", "js-path": "main.mjs", "host": "nodejs" } ] } }`
@@ -259,7 +263,7 @@ instance.exports.add_ints(40, 2);   // 42; memory is instance.exports.memory
 | ASM0021 | `.asm` qualified for wasm | `.wasm.s` |
 | ASM0023 | wasm RID, no qualified source | `name.wasm.s`, or drop the RID |
 | ASM0030 | pattern in a module's `ExportsFile` | exact names |
-| ASM0054 | .NET wasm app without the native build of its .NET | the workload it names |
+| ASM0054 | .NET wasm app without the native build of its .NET | the workload it names, on the SDK of the app's .NET (a .NET 10 SDK for `net10.0`, never SDK 11's `wasm-tools-net10`) |
 | ASM0131 / ASM0132 / ASM0133 | PROTO for no exported function / wrong wasm type / RIDs disagree | see PROTO above |
 | `error: PROTO and the function macros go between functions` | PROTO or FUNCTION inside a body | move it above the `FUNCTION`; close with `ENDFUNCTION` |
 | `no perHostConfigs found` | `dotnet run` of a browser app without the runtimeconfig template | add it |

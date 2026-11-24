@@ -615,7 +615,7 @@ Every row was reproduced with an AsmSdk release.
 | `bin/Debug/net10.0/win-x64/` holds both a RID's library and a whole `-r win-x64` build | `RidFolders` in a portable build uses the same folder names as `dotnet build -r` | `native/{rid}` when you also build for one RID |
 | `DllNotFoundException` under NativeAOT with a custom folder | no generated loader: a VB or F# project, below .NET 5, or `AsmGenerateNativeLibraryLoader=false` | keep the app folder for NativeAOT, or a resolver of your own |
 | `ASM0019 … absolute addressing not supported!` (wasm, after 0.3.0) | a `.set`/`.equ`/`=` constant in a `.wasm.s` source | the number itself, or a macro emitting `i32.const N` (`references/webassembly.md`) |
-| `ASM0054` (wasm, after 0.3.0) | a .NET WebAssembly app without .NET's native wasm build for its .NET version | `wasm-tools` (`wasm-tools-net10` for net10.0 on SDK 11), or `wasi-experimental` + WASI SDK 25.0 |
+| `ASM0054` (wasm, after 0.3.0) | a .NET WebAssembly app without .NET's native wasm build for its .NET version | `wasm-tools`, or `wasi-experimental` + WASI SDK 25.0, on the SDK of the app's .NET (a .NET 10 SDK for net10.0: SDK 11.0.100's `wasm-tools-net10` did not build such apps) |
 | asm 10-30x faster than C# in a browser, but not in Node | a .NET browser *build* runs with the debugger on in Chromium/Firefox (`debugLevel -1`): unoptimized interpreter, no jiterpreter | time a publish, or `<WasmDebugLevel>0</WasmDebugLevel>` |
 
 ## References: read the one the task needs
