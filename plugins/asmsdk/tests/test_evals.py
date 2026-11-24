@@ -73,6 +73,10 @@ FAIL_GRADERS: Dict[Tuple[str, str], Set[str]] = {
                                           "argument-register-per-os"},
     ("task-port-to-every-os", "fail-2"): {"hash64-exported-everywhere", "mix64-internal-everywhere",
                                           "seed-private-extern-on-macos", "argument-register-per-os"},
+    # An unqualified sum.s: every grader of the missing sum.wasm.s fails; the build stops with ASM0023.
+    ("task-wasm-library", "fail-1"): {"wasm-source", "function-signature", "proto-line", "no-assembler-constants"},
+    # A .set constant: one grader; the build stops with ASM0019.
+    ("task-wasm-library", "fail-2"): {"no-assembler-constants"},
 }
 
 

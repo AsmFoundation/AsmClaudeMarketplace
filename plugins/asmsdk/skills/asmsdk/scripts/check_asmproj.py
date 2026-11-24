@@ -25,7 +25,15 @@ every RID is assumed and platform findings become warnings. Each source then bui
 the SDK would select it for (its extension and file-name qualifier, as AsmSelectSources picks
 them), and each line the platforms its %ifdef WINDOWS / LINUX / MACOS guards leave it on. Source
 checks are line-based heuristics over NASM syntax: treat a warning as "look here", an error as
-"this will fail as written". GNU-syntax (.s) files are counted for RID coverage, not linted.
+"this will fail as written". GNU-syntax (.s) ARM64 files are counted for RID coverage, not linted.
+
+WebAssembly (browser-wasm, wasi-wasm: the SDK release after 0.3.0): the project rules (no wasm
+in 0.3.0, no browser program, no libc module, no define with a value, no pattern in a module's
+ExportsFile) and, for each .s source a wasm RID selects, the measured traps of llvm-mc's wasm
+parser and writer (ASMWASM001-ASMWASM013): assembler constants, data labels without a size,
+PROTO or a function macro inside a function, untyped select, return_call where .NET links the
+code, calls to functions whose type llvm-mc has not seen, a PROTO line whose C types lower to
+another wasm signature than its FUNCTION's.
 
 Usage:
     check_asmproj.py <path> [<path> ...] [--json] [--no-info]
@@ -84,7 +92,14 @@ RIDS: Dict[str, Tuple[str, str, bool]] = {
     "linux-musl-x64": ("Linux", "x64", True),
     "osx-x64": ("MacOS", "x64", False),
     "osx-arm64": ("MacOS", "arm64", False),
+    # WebAssembly, the SDK release after 0.3.0 (0.3.0 stops these with ASM0011, ASMPRJ019):
+    # LLVM's wasm assembly in .s files qualified for it, never NASM, never an unqualified file.
+    "browser-wasm": ("Browser", "wasm", False),
+    "wasi-wasm": ("WASI", "wasm", False),
 }
+
+#: The native RIDs: the seven 0.3.0 builds, and what a project with no known RID is judged for.
+NATIVE_RIDS = [rid for rid, (_, cpu, _) in RIDS.items() if cpu != "wasm"]
 
 #: The OS names used throughout (RIDS' first field), and the set of all three.
 OSES = ("Windows", "Linux", "MacOS")
@@ -94,7 +109,7 @@ ALL_OSES: FrozenSet[str] = frozenset(OSES)
 OS_LABEL = {"Windows": "Windows (win64)", "Linux": "Linux (elf64)", "MacOS": "macOS (macho64)"}
 
 #: File-name qualifiers that are not RIDs (x.linux.asm, x.unix.asm, x.arm64.s, ...).
-FAMILY_QUALIFIERS = {"win", "linux", "linux-musl", "osx", "unix", "x64", "arm64"}
+FAMILY_QUALIFIERS = {"win", "linux", "linux-musl", "osx", "unix", "x64", "arm64", "browser", "wasi", "wasm"}
 
 #: The SDK's defines that name an OS, for %ifdef guards: WINDOWS, LINUX and MACOS select one
 #: OS; MUSL implies Linux; ARM64 is never defined while NASM assembles (x64 only).
@@ -227,8 +242,8 @@ def rid_specificity(rid: str, qualifier: str) -> int:
 
     Returns:
         1 for no qualifier, 50 for the RID itself, 40 linux-musl (musl only), 30 for its OS
-        family (win, linux, osx), 20 unix (not Windows), 10 its CPU (x64, arm64), 0 when the
-        qualifier does not apply to the RID.
+        family (win, linux, osx, browser, wasi), 20 unix (Linux and macOS only: the browser and
+        WASI are not Unix), 10 its CPU (x64, arm64, wasm), 0 when the qualifier does not apply.
     """
     os_name, cpu, musl = RIDS[rid]
     q = qualifier.lower()
@@ -241,9 +256,12 @@ def rid_specificity(rid: str, qualifier: str) -> int:
         "win": 30 if os_name == "Windows" else 0,
         "linux": 30 if os_name == "Linux" else 0,
         "osx": 30 if os_name == "MacOS" else 0,
-        "unix": 20 if os_name != "Windows" else 0,
+        "browser": 30 if os_name == "Browser" else 0,
+        "wasi": 30 if os_name == "WASI" else 0,
+        "unix": 20 if os_name in ("Linux", "MacOS") else 0,
         "x64": 10 if cpu == "x64" else 0,
         "arm64": 10 if cpu == "arm64" else 0,
+        "wasm": 10 if cpu == "wasm" else 0,
     }.get(q, 0)
 
 
@@ -277,13 +295,16 @@ def source_score(path: str, rid: str) -> int:
         rid: One of RIDS' names.
 
     Returns:
-        0 when the file does not build the RID: NASM never builds ARM64, and an unqualified
-        file builds only its own language's CPU (.asm x64, .s ARM64). Otherwise the
-        qualifier's rid_specificity, the highest of a key winning.
+        0 when the file does not build the RID: NASM never builds ARM64 or WebAssembly, and an
+        unqualified file builds only its own language's CPU (.asm x64, .s ARM64; no
+        unqualified file builds wasm). Otherwise the qualifier's rid_specificity, the highest
+        of a key winning.
     """
     _, qualifier, language = split_source_name(path)
     cpu = RIDS[rid][1]
     if language == "Nasm" and cpu != "x64":
+        return 0
+    if not qualifier and cpu == "wasm":
         return 0
     if not qualifier:
         return 1 if (language == "Nasm") == (cpu == "x64") else 0
@@ -291,16 +312,17 @@ def source_score(path: str, rid: str) -> int:
 
 
 def qualifier_is_arm64_only(qualifier: str) -> bool:
-    """Whether a qualifier names only ARM64 RIDs (a NASM file with it is ASM0021).
+    """Whether a qualifier names only RIDs NASM cannot build (a NASM file with it is ASM0021).
 
     Args:
         qualifier: A file-name qualifier.
 
     Returns:
-        True when every RID it applies to is ARM64 (arm64, linux-arm64, ...).
+        True when every RID it applies to is ARM64 (arm64, linux-arm64, ...) or WebAssembly
+        (wasm, browser, wasi-wasm, ...): NASM assembles x86-64 only.
     """
     applies = [rid for rid in RIDS if rid_specificity(rid, qualifier) > 0]
-    return bool(applies) and all(RIDS[rid][1] == "arm64" for rid in applies)
+    return bool(applies) and all(RIDS[rid][1] in ("arm64", "wasm") for rid in applies)
 
 
 def select_sources(sources: List[str], rid: str) -> Tuple[List[str], List[List[str]]]:
@@ -1088,8 +1110,9 @@ class Linter:
 
         Returns:
             (rids, assumed): its own known RIDs; else those of the projects that reference it;
-            else all seven with assumed=True (nothing here says which RIDs it builds, so
-            platform-specific findings are warnings).
+            else all seven native RIDs with assumed=True (nothing here says which RIDs it
+            builds, so platform-specific findings are warnings), plus the WebAssembly RIDs when
+            the project holds a source qualified for them.
         """
         own = [r for r in project.declared_rids if r in RIDS]
         if own:
@@ -1097,7 +1120,9 @@ class Linter:
         inherited = self._referrer_rids.get(os.path.normcase(project.path))
         if inherited:
             return sorted(inherited), False
-        return list(RIDS), True
+        wasm = [r for r in RIDS if RIDS[r][1] == "wasm"
+                and any(source_score(s, r) > 0 for s in project_all_sources(project))]
+        return NATIVE_RIDS + wasm, True
 
     def symbol_lists(self, project: Project) -> Dict[str, Set[str]]:
         """The SDK's macOS and Windows C library lists, read once per run (see load_sdk_symbol_lists).
@@ -1311,6 +1336,7 @@ class Linter:
                              f"include folder outside the project ({item.get('Include')}) is not a build dependency: editing its files leaves stale objects",
                              f'<AsmInclude Include="{item.get("Include").rstrip("/")}/**/*.inc" />')
         self._check_public_includes(p)
+        self._check_wasm_project(p, rids)
         self.check_sources(p, referenced)
 
     def _check_runtime_identifiers(self, p: Project) -> None:
@@ -1417,8 +1443,8 @@ class Linter:
             _, qualifier, language = split_source_name(path)
             if language == "Nasm" and qualifier and qualifier_is_arm64_only(qualifier):
                 self.add("error", "ASMSRC014", path, 0,
-                         f"a NASM file (.asm) qualified for '{qualifier}', which names ARM64 only: NASM assembles x86-64 only, and the build stops with ASM0021",
-                         "write ARM64 code in GNU syntax, in a .s file (x." + qualifier + ".s)")
+                         f"a NASM file (.asm) qualified for '{qualifier}', which names no x64 RID: NASM assembles x86-64 only, and the build stops with ASM0021",
+                         f"write ARM64 code in GNU syntax, or WebAssembly in LLVM's wasm syntax, in a .s file (x.{qualifier}.s)")
         selected_by: Dict[str, Set[str]] = {}
         for rid in rids:
             selected, ties = select_sources(all_sources, rid)
@@ -1429,8 +1455,11 @@ class Linter:
             if all_sources and not selected and not ties and not assumed:
                 self.add("error", "ASMSRC016", p.path, p.prop_lines.get("RuntimeIdentifiers", 0),
                          f"no source of this project builds {rid}: the build stops with ASM0023"
-                         + (" (NASM files build the x64 RIDs; ARM64 needs GNU-syntax .s files)" if RIDS[rid][1] == "arm64" else ""),
-                         f"add a source for {rid} (for example name.{rid}" + (".s" if RIDS[rid][1] == "arm64" else ".asm") + f"), or remove {rid} from RuntimeIdentifiers")
+                         + (" (NASM files build the x64 RIDs; ARM64 needs GNU-syntax .s files)" if RIDS[rid][1] == "arm64" else "")
+                         + (" (no unqualified file builds WebAssembly: an unqualified .s is ARM64 code)" if RIDS[rid][1] == "wasm" else ""),
+                         f"add a source for {rid} (for example name."
+                         + ({"arm64": f"{rid}.s", "wasm": "wasm.s"}.get(RIDS[rid][1], f"{rid}.asm"))
+                         + f"), or remove {rid} from RuntimeIdentifiers")
             for path in selected:
                 selected_by.setdefault(os.path.normcase(path), set()).add(RIDS[rid][0])
         return {os.path.normcase(s): frozenset(selected_by.get(os.path.normcase(s), set()))
@@ -1480,6 +1509,7 @@ class Linter:
         """
         rids, assumed = self.effective_rids(p)
         file_oses = self._check_source_selection(p, rids, assumed)
+        self._check_wasm_sources(p, rids)
         sources, includes = project_sources(p)
         dirs = include_dirs(p, referenced)
         project_files = sources + includes
@@ -1559,6 +1589,276 @@ class Linter:
                      f"no source defines '{entry}' (a global label, or FUNCTION {entry}): "
                      + ("the SDK's startup code calls main" if entry == "main" else f"the executable's entry point is {entry}"),
                      f"FUNCTION {entry} (asmsdk.inc), or global {entry} and the {entry}: label")
+
+    # -- WebAssembly (the SDK release after 0.3.0) ------------------------------------------------
+
+    #: The wasm type clang gives each C type on wasm32 (the SDK's ApiPrototype.WasmValueType):
+    #: pointers and function pointers are i32 too, and void (a return only) has no value.
+    WASM_C_TYPES = {"void": None, "int64_t": "i64", "uint64_t": "i64", "float": "f32", "double": "f64"}
+
+    def _check_wasm_project(self, p: Project, rids: List[str]) -> None:
+        """The project-level WebAssembly rules: what the SDK refuses before it assembles anything.
+
+        Args:
+            p: The project.
+            rids: The RIDs it is judged for (effective_rids).
+        """
+        wasm = [r for r in rids if RIDS[r][1] == "wasm"]
+        if not wasm:
+            return
+        line = p.prop_lines.get
+        where = line("RuntimeIdentifiers", line("RuntimeIdentifier", 0))
+        version = self._pinned_version(p)
+        if version == "0.3.0":
+            # Info, not an error: a build of AsmSdk's main packed into a local feed also says
+            # 0.3.0 and builds wasm (the eval suite's build check uses one); nuget.org's 0.3.0
+            # stops it. The linter cannot tell the two packages apart.
+            self.add("info", "ASMPRJ019", p.path, where,
+                     f"{', '.join(wasm)} with AsmFoundation.Sdk 0.3.0: nuget.org's 0.3.0 has no WebAssembly, and the build stops with ASM0011",
+                     "an AsmFoundation.Sdk after 0.3.0 in global.json (a build of AsmSdk's main from a local feed also works)")
+        if p.kind == "Executable" and "browser-wasm" in wasm:
+            self.add("error", "ASMPRJ020", p.path, line("OutputType", where),
+                     "a program (OutputType Exe) for browser-wasm: the browser starts no program, and the build stops with ASM0017",
+                     "a Library for the browser (a module with exports), or the program for wasi-wasm only")
+        if "libc" in p.frameworks and p.kind in ("SharedLibrary", "Executable"):
+            self.add("error", "ASMPRJ021", p.path, line("TargetFramework", line("TargetFrameworks", where)),
+                     "a libc WebAssembly module or WASI program: the bundled wasm-ld links no C library, and the build stops with ASM0016",
+                     "freestanding (calling WASI or JavaScript imports), or a StaticLibrary for a .NET WebAssembly app, whose own build brings the C library")
+        for define in re.split(r"[;,]", p.prop("DefineConstants") or ""):
+            define = define.strip()
+            if "=" in define and "$(" not in define:
+                self.add("error", "ASMPRJ022", p.path, line("DefineConstants", 0),
+                         f"the define '{define}' has a value, and a WebAssembly source receives defines as labels: the build stops with ASM0018",
+                         "define the name alone and write the value in the source")
+        exports = p.prop("ExportsFile")
+        if exports and p.kind == "SharedLibrary":
+            exports_path = os.path.join(p.dir, exports)
+            try:
+                with open(exports_path, encoding="utf-8", errors="replace") as f:
+                    # Version scripts take C comments (and # lines): their * are not patterns.
+                    script = re.sub(r"#[^\n]*", "", re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S))
+                # Only the exported names matter: a version script's "local: *;" (everything
+                # else stays hidden) is fine, and so are the node names (CRC32C_1.0).
+                script = re.sub(r"\blocal\s*:[^}]*", "", script)
+                patterns = [w for w in re.findall(r"[\w*?.$@]+", script) if "*" in w or "?" in w]
+            except OSError:
+                patterns = []
+            if patterns:
+                self.add("error", "ASMPRJ023", p.path, line("ExportsFile", 0),
+                         f"{exports} exports {', '.join(sorted(set(patterns)))}, a pattern: a WebAssembly module exports exact names only, and the build stops with ASM0030",
+                         "list each exported name (local: * may stay)")
+
+    @staticmethod
+    def _wasm_code(text: str) -> str:
+        """A wasm source line without its string literals' contents and its comment.
+
+        Args:
+            text: The raw line.
+
+        Returns:
+            The code part: strings become "" (so a // inside .ascii is not a comment), and
+            everything from // or # on is dropped.
+        """
+        code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', text)
+        for marker in ("//", "#"):
+            cut = code.find(marker)
+            if cut >= 0:
+                code = code[:cut]
+        return code.rstrip()
+
+    def _wasm_lower(self, c_type: str) -> Optional[str]:
+        """Lower one C type of a PROTO line to its wasm value type, as the SDK does.
+
+        Args:
+            c_type: The type as written, with qualifiers, pointers and possibly a parameter name.
+
+        Returns:
+            "i32", "i64", "f32", "f64", or None for void (no value).
+        """
+        if "*" in c_type or "(" in c_type:
+            return "i32"
+        words = [w for w in re.findall(r"[A-Za-z_]\w*", c_type) if w not in ("const", "volatile", "struct", "unsigned", "signed")]
+        base = next((w for w in words if w in self.WASM_C_TYPES), words[0] if words else "int")
+        return self.WASM_C_TYPES.get(base, "i32")
+
+    def _wasm_proto_signature(self, proto: str) -> Optional[Tuple[str, str]]:
+        """The wasm signature a PROTO line lowers to.
+
+        Args:
+            proto: The text after PROTO, e.g. "int32_t add(int32_t a, int32_t b)".
+
+        Returns:
+            (function name, "(i32,i32)->(i32)" without spaces), or None when the line cannot be
+            split into a return type, a name and a parameter list.
+        """
+        match = re.match(r"^(.*?)\b([A-Za-z_]\w*)\s*\((.*)\)\s*;?\s*$", proto.strip())
+        if not match:
+            return None
+        returns, name, params = match.groups()
+        result = self._wasm_lower(returns) if returns.strip() else "i32"
+        parameters: List[str] = []
+        if params.strip() and params.strip() != "void":
+            for param in params.split(","):
+                lowered = self._wasm_lower(param)
+                if lowered:
+                    parameters.append(lowered)
+        return name, f"({','.join(parameters)})->({result or ''})"
+
+    def _check_wasm_sources(self, p: Project, rids: List[str]) -> None:
+        """The measured traps of llvm-mc's WebAssembly parser and writer, per wasm source.
+
+        Each check reports what the build would do with the line as written; every one was
+        reproduced with LLVM 23.1.5 and the SDK's asmsdk-wasm.inc.
+
+        Args:
+            p: The project.
+            rids: The RIDs it is judged for (effective_rids); only the .s files a wasm RID
+                selects are read.
+        """
+        wasm = [r for r in rids if RIDS[r][1] == "wasm"]
+        if not wasm:
+            return
+        all_sources = project_all_sources(p)
+        selected = sorted({s for r in wasm for s in select_sources(all_sources, r)[0] if s.lower().endswith(".s")})
+        linked_into_dotnet = p.kind in ("SharedLibrary", "StaticLibrary", "Objects")
+        functions = ("FUNCTION", "LOCAL_FUNCTION", "HIDDEN_FUNCTION")
+        for path in selected:
+            try:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    raw = f.read().splitlines()
+            except OSError:
+                continue
+            codes = [(n, self._wasm_code(t)) for n, t in enumerate(raw, 1)]
+            sized = {m.group(2) for _, c in codes for m in [re.match(r"^\s*(ENDDATA|\.size)\s+([\w.$]+)", c)] if m}
+            known: Set[str] = set()
+            current: Optional[Tuple[str, int]] = None      # (function name, line) while inside one
+            section = "text"
+            data_labels: List[Tuple[int, str]] = []
+            protos: Dict[str, Tuple[int, str]] = {}
+            imports_wasi = False
+            data_sections: List[int] = []
+            aligned = False
+            for number, code in codes:
+                stripped = code.strip()
+                if not stripped:
+                    continue
+                word = stripped.split()[0]
+                upper = word.upper()
+                if re.match(r"^\.(set|equ|equiv)\b", stripped) or re.match(r"^[A-Za-z_.$][\w.$]*\s*=[^=]", stripped):
+                    self.add("error", "ASMWASM001", path, number,
+                             "an assembler constant: llvm-mc's WebAssembly writer stops on any constant symbol, even a .L one "
+                             "('absolute addressing not supported!'), and the build stops with ASM0019",
+                             "write the number where it is used, or a macro that expands to i32.const N")
+                if stripped == ".text":
+                    self.add("warning", "ASMWASM003", path, number,
+                             "a bare .text does nothing in llvm-mc's wasm parser: code after it stays in the current section",
+                             "start each function with FUNCTION, which switches to its own section")
+                m = re.match(r"^\.(int8|int16|int32|int64)\s+[^,]+,", stripped)
+                if m or word == ".word":
+                    self.add("error", "ASMWASM004", path, number,
+                             (f".{m.group(1)} takes one value: the wasm parser stops at the comma ('Expected EOL')" if m
+                              else ".word does not exist in llvm-mc's wasm parser"),
+                             "a list in .byte, .short, .int or .quad")
+                if stripped in (".bss", ".rodata"):
+                    self.add("error", "ASMWASM005", path, number,
+                             f"{stripped} is an unknown directive in llvm-mc's wasm parser",
+                             "BSS or RODATA from asmsdk-wasm.inc (.section " + stripped + ',"",@)')
+                if upper == "STRUCT":
+                    self.add("error", "ASMWASM010", path, number,
+                             "STRUCT is not read from WebAssembly sources yet: its offsets would be assembler constants, which wasm objects cannot hold",
+                             "lay the structure out with explicit offsets in this source, and keep STRUCT lines in the native sources only if no PROTO here uses the struct")
+                if upper == "PROTO" or upper in functions:
+                    if current:
+                        self.add("error", "ASMWASM006", path, number,
+                                 f"{upper} inside {current[0]} (from line {current[1]}): the build stops with "
+                                 f"'PROTO and the function macros go between functions: {current[0]} has no ENDFUNCTION yet'",
+                                 f"close {current[0]} with ENDFUNCTION {current[0]} first; a PROTO line goes right above its FUNCTION")
+                if upper == "PROTO":
+                    lowered = self._wasm_proto_signature(stripped[len(word):])
+                    # A PROTO inside a function is ASMWASM006 already: it pairs with nothing.
+                    if lowered and not current:
+                        protos[lowered[0]] = (number, lowered[1])
+                    continue
+                if upper in functions:
+                    m = re.match(r"^\w+\s+([\w.$]+)\s*,\s*(\(.*)$", stripped)
+                    if m:
+                        name, signature = m.group(1), re.sub(r"\s+", "", m.group(2))
+                        known.add(name)
+                        current = (name, number)
+                        section = "text"
+                        if name in protos:
+                            proto_line, proto_signature = protos.pop(name)
+                            if proto_signature != signature:
+                                self.add("error", "ASMWASM013", path, proto_line,
+                                         f"PROTO {name} lowers to {proto_signature} but its {upper} declares {signature}: the build stops with ASM0132",
+                                         "make them agree: pointers, bool and integers of 32 bits or fewer are i32, int64_t/uint64_t i64, float f32, double f64")
+                            # A binding needs a function the image offers: a LOCAL_FUNCTION never
+                            # leaves its file, and a module exports no HIDDEN_FUNCTION.
+                            if upper == "LOCAL_FUNCTION" or (upper == "HIDDEN_FUNCTION" and p.kind == "SharedLibrary"):
+                                self.add("error", "ASMWASM014", path, proto_line,
+                                         f"PROTO {name} describes a {upper}, which no caller outside "
+                                         + ("this file" if upper == "LOCAL_FUNCTION" else "the module") + " can reach: the build stops with ASM0131",
+                                         f"declare {name} with FUNCTION, or drop the PROTO line")
+                    continue
+                if upper == "ENDFUNCTION":
+                    closing = stripped.split()[1] if len(stripped.split()) > 1 else ""
+                    if current and closing and closing != current[0]:
+                        self.add("error", "ASMWASM007", path, number,
+                                 f"ENDFUNCTION {closing} closes {current[0]} (line {current[1]})",
+                                 f"ENDFUNCTION {current[0]}")
+                    current = None
+                    continue
+                if upper in ("EXTERN_FUNCTION", "IMPORT_FUNCTION") or word == ".functype":
+                    m = re.match(r"^\S+\s+(?:([\w.$]+)\s*,\s*)?([\w.$]+)\s*,\s*\(", stripped) if upper == "IMPORT_FUNCTION" \
+                        else re.match(r"^\S+\s+([\w.$]+)", stripped)
+                    if m:
+                        known.add(m.group(m.lastindex))
+                    if upper == "IMPORT_FUNCTION" and "wasi_snapshot_preview1" in stripped:
+                        imports_wasi = True
+                    continue
+                if upper in ("DATA", "RODATA", "BSS") or re.match(r"^\.section\s+\.(data|rodata|bss)\b", stripped):
+                    section = "data"
+                    data_sections.append(number)
+                    continue
+                if word == ".p2align" or word == ".balign" or word == ".align":
+                    aligned = True
+                label = re.match(r"^([A-Za-z_$][\w.$]*):", stripped)
+                if label and section == "data" and not label.group(1).startswith(".L"):
+                    data_labels.append((number, label.group(1)))
+                if stripped == "select":
+                    self.add("error", "ASMWASM008", path, number,
+                             "an untyped select: llvm-mc 23.1.5's type checker refuses it ('type mismatch, expected [i32] but got [i32, i32]' at ENDFUNCTION)",
+                             "if i32 ... else ... end_if, leaving the chosen value")
+                call = re.match(r"^(call|CALL|TAILCALL|return_call)\s+([\w.$]+)\s*$", stripped)
+                if call:
+                    if call.group(1) == "return_call" and linked_into_dotnet:
+                        self.add("warning", "ASMWASM009", path, number,
+                                 "return_call in a library: a .NET WebAssembly app that links it fails .NET 10's wasm-opt validation ('return_call* requires tail calls')",
+                                 "TAILCALL (a call and a return), unless no .NET app will ever link this code")
+                    if call.group(2) not in known:
+                        self.add("error", "ASMWASM011", path, number,
+                                 f"a call to {call.group(2)}, whose type llvm-mc has not seen here: assembling stops with 'missing .functype'",
+                                 f"EXTERN_FUNCTION {call.group(2)}, (params) -> (results) above the call (a function further down, in another file or an archive), "
+                                 "or IMPORT_FUNCTION for a host function")
+            if current:
+                self.add("error", "ASMWASM007", path, current[1],
+                         f"{current[0]} has no ENDFUNCTION: the function never ends, and llvm-mc refuses the file",
+                         f"ENDFUNCTION {current[0]} after its last instruction")
+            for name, (number, _) in sorted(protos.items(), key=lambda item: item[1][0]):
+                # A PROTO line no function macro of this file followed: a binding for nothing.
+                self.add("error", "ASMWASM014", path, number,
+                         f"PROTO {name} is followed by no FUNCTION {name} in this file: the build stops with ASM0131",
+                         f"put the PROTO line right above FUNCTION {name}, or fix the name")
+            for number, name in data_labels:
+                if name not in sized:
+                    self.add("error", "ASMWASM002", path, number,
+                             f"the data label {name} has no size: llvm-mc's wasm writer stops ('data symbols must have a size set with .size'), and the build with ASM0019",
+                             f"ENDDATA {name} after its last byte (a .L label needs none)")
+            if imports_wasi and data_sections and not aligned:
+                self.add("warning", "ASMWASM012", path, data_sections[0],
+                         "WASI is imported, and no data here is aligned: llvm-mc aligns nothing by itself, and wasmtime refuses a misaligned "
+                         "iovec or result pointer ('Pointer not aligned to 4')",
+                         ".p2align 2 before the 32-bit values a WASI call is given")
 
     def _missing_from_c_libraries(self, p: Project, name: str, oses: FrozenSet[str],
                                   lists: Dict[str, Set[str]], libc_extra: Set[str]) -> FrozenSet[str]:

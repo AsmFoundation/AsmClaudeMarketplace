@@ -16,7 +16,9 @@ Safety: the workspaces were written by an agent. Each one is copied into a fresh
 building, and a project that uses Exec, inline or external task code, downloads or deletes is
 not built (none of the tasks needs one), so no agent-written command runs; targets that only
 add items or copy files are built. Outputs run inside a throw-away Linux container (docker),
-never on the host; Windows and macOS outputs are only read, never run.
+never on the host; Windows and macOS outputs are only read, never run. The one exception is
+WebAssembly (task-wasm-library): its module runs in Node on the host, instantiated with no
+imports, which leaves it nothing to call; the WebAssembly sandbox is the container there.
 
 The same checks run on the suite's controls (evals/controls): a correct answer and wrong
 ones for every task, each known to pass or fail. Run them after changing this script, a task
@@ -79,6 +81,22 @@ HASH_LIBRARIES: Tuple[Tuple[str, str], ...] = (
 DEFINES_PROBE_BODY = ('%include "asmsdk.inc"\ndefault rel\nsection .text\nFUNCTION fast_check\n'
                       '    RETURN\nENDFUNCTION\n%ifdef LINUX\n'
                       'section .note.GNU-stack noalloc noexec nowrite progbits\n%endif\n')
+
+#: task-wasm-library: the module each WebAssembly RID must produce (no lib prefix on wasm).
+SUM_MODULES: Tuple[Tuple[str, str], ...] = (("browser-wasm", "Sum.wasm"), ("wasi-wasm", "Sum.wasm"))
+
+#: task-wasm-library: the browser module's run, in Node. It is instantiated with no imports at
+#: all, so it can do nothing but compute: a WebAssembly module reaches the host only through
+#: imports, and one that declares any fails to instantiate here (the task needs none). It sums
+#: [1, 2, 3, 4, -20] (-10), an empty range (0) and the last three (9).
+SUM_RUN_SCRIPT = (
+    "const fs=require('fs');"
+    "WebAssembly.instantiate(fs.readFileSync(process.argv[1]),{}).then(({instance})=>{"
+    "const {memory,sum_i32}=instance.exports;"
+    "const base=memory.grow(1)*65536;"
+    "new Int32Array(memory.buffer,base,5).set([1,2,3,4,-20]);"
+    "console.log([sum_i32(base,5),sum_i32(base,0),sum_i32(base+4,3)].join(' '));"
+    "}).catch(e=>{console.log('error '+e.message);process.exit(1);});")
 
 #: Elements that would let a project run commands, load task code, download, or delete
 #: outside the build's own outputs. A <Target> that only adds items or copies files is
@@ -425,6 +443,33 @@ def check(case: str, workspace: str, args: argparse.Namespace, env: Dict[str, st
             # The task's requirement: hash64 is the only export of every RID's library.
             exports = check_exports(workspace, "Hash", HASH_LIBRARIES, env, result)
             result["ran"] = all(names == ["hash64"] for names in exports.values())
+    elif case == "task-wasm-library":
+        ensure_global_json(workspace)
+        code, out = run(dotnet + ["build", "Sum/Sum.asmproj"] + nodereuse, workspace, env)
+        result["built"] = code == 0
+        result["errors"] = errors_of(out) if code else []
+        if code == 0:
+            # Both RIDs' modules export sum_i32 and carry its PROTO record (the bindings' source).
+            exports = check_exports(workspace, "Sum", SUM_MODULES, env, result)
+            passed = all(names is not None and "sum_i32" in names for names in exports.values())
+            module = find_output(workspace, "Sum", "browser-wasm", "Sum.wasm")
+            if module:
+                rc, out = run([sys.executable, "-I", INSPECTOR, module, "--json"], workspace, env)
+                try:
+                    records = json.loads(out)["asmapi"] if rc == 0 else []
+                except (ValueError, KeyError):
+                    records = []
+                has_proto = any(r.startswith("proto ") and "sum_i32(" in r for r in records)
+                passed = passed and has_proto
+                result["details"].append(f"browser-wasm asmapi: {records}")
+                node = shutil.which("node")
+                if node:
+                    rc, out = run([node, "-e", SUM_RUN_SCRIPT, module], workspace, env)
+                    passed = passed and rc == 0 and out.strip().splitlines()[-1:] == ["-10 0 9"]
+                    result["details"].append(f"run in Node: exit {rc}: {out.strip()[-120:]}")
+                else:
+                    result["details"].append("run: no node on PATH (exports and records checked only)")
+            result["ran"] = passed
     return result
 
 

@@ -4,6 +4,47 @@ Changes to the marketplace and its plugins. Each plugin carries its own version 
 `plugin.json`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased (branch `asmsdk-wasm`)
+
+Merged when AsmFoundation.Sdk's next release ships WebAssembly (the owner's choice of
+2026-11-24: "on a branch, merged with the SDK's release"); `main` is what users install.
+
+### Added
+
+- **`asmsdk`: WebAssembly**, the SDK's third target (`browser-wasm`, `wasi-wasm`):
+  - **`references/webassembly.md`:** the RIDs and outputs, sources and their qualifiers, the
+    `asmsdk-wasm.inc` macros, PROTO on wasm (the exact signature check, one API for every
+    RID, the placement guard), .NET WebAssembly apps (workloads, ASM0054, the debugger trap
+    when timing in a browser), modules for JavaScript, WASI programs, packages, templates,
+    the measured footguns and diagnostics. Its two examples were built and run with a build
+    of AsmSdk's `main` (a library summed in Node, a WASI command in wasmtime).
+  - **`SKILL.md`:** a WebAssembly paragraph and recipe, three footgun rows, the reference in
+    the table, WebAssembly words in the description.
+  - **`check_asmproj.py`: 64 checks** (19 new). `ASMPRJ019`-`023`: a wasm RID with 0.3.0
+    (info: a `main` build in a local feed is also 0.3.0), a browser program, a libc module, a
+    define with a value, a pattern in a module's exports. `ASMWASM001`-`014`, for each `.s`
+    source a wasm RID selects: an assembler constant, a data label without `ENDDATA`, a bare
+    `.text`, `.int32` lists, `.bss`/`.rodata`, `PROTO` or a function macro inside a function,
+    a function without `ENDFUNCTION`, an untyped `select`, `return_call` in code .NET links,
+    `STRUCT`, a call to a function llvm-mc has not seen, unaligned WASI data, a `PROTO` that
+    lowers to another wasm signature, a `PROTO` for a `LOCAL_FUNCTION` or for nothing. The
+    source selection knows the wasm qualifiers (`ASMSRC014` for `x.wasm.asm`, `ASMSRC016`
+    for a wasm RID with no qualified source). Checked against AsmSdk's own wasm test
+    projects: every deliberately wrong one is flagged, every good one is clean.
+  - **`new_asmproj.py`:** `--rids browser-wasm;wasi-wasm` writes a `.wasm.s` library (with
+    `PROTO` lines when every RID is wasm), `--kind exe --rids wasi-wasm` a WASI command; a
+    browser program, a libc module, and a WASI program beside native RIDs are refused.
+    Built with a `main` build: all four kinds.
+  - **`inspect_output.py`:** WebAssembly modules, WASI commands, objects and archives, read
+    in Python without llvm-readobj: exports, imports, memory, custom sections and the
+    `asmapi` records; `--expect-import`, `--expect-type module|command`.
+  - **Evals:** `task-wasm-library` (a library with `sum_i32` and its PROTO line), its
+    graders, a right answer and two wrong ones, and a build-check branch that runs the
+    module in Node with no imports. The controls passed and failed as named, with a `main`
+    build in the feed.
+  - **Tests:** 29 (wasm fixtures for every new check, the wasm scaffolds lint clean, the
+    inspector on a real WASI command and archive).
+
 ## 2026-11-21
 
 ### Changed

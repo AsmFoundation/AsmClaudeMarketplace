@@ -1,6 +1,6 @@
 ---
 name: asmsdk
-description: Build, reference, package and release x86-64 and ARM64 assembly with AsmSdk (the AsmFoundation.Sdk MSBuild SDK) - .asmproj projects that turn NASM (x64) and GNU-syntax (ARM64) sources into shared libraries, static libraries and programs for seven runtime identifiers (win-x64, win-arm64, linux-x64, linux-arm64, linux-musl-x64, osx-x64, osx-arm64) with dotnet build, share them as versioned NuGet packages, and P/Invoke them from .csproj projects, which get the right binary per RID. Use it whenever an .asmproj, AsmFoundation.Sdk, AsmFoundation.Toolchain or an msbuild-sdks entry for assembly is involved, or the user wants to build, link, version, package, test or ship assembly with MSBuild, dotnet build, pack or publish, NuGet, a .sln or .slnx, or CI - including link errors such as "recompile with -fPIC", "undefined symbol", "unrecognised symbol type", "attempted static link of dynamic object", ASM0xxx errors (ASM0010 no RuntimeIdentifiers, ASM0023, ASM0080), RuntimeIdentifiers and per-RID source files, asmsdk.inc or asmsdk-gnu.inc, TargetFramework libc and the C library stand-ins, Windows DLL exports, Mach-O, single-file or NativeAOT publishing of an app that uses asm, and calling assembly from C# or Python - even when AsmSdk is not named. Not for MASM, CMake or Makefile builds, inline assembly in C, or questions about what an instruction does.
+description: Build, reference, package and release x86-64 and ARM64 assembly with AsmSdk (the AsmFoundation.Sdk MSBuild SDK) - .asmproj projects that turn NASM (x64) and GNU-syntax (ARM64) sources into shared libraries, static libraries and programs for seven runtime identifiers (win-x64, win-arm64, linux-x64, linux-arm64, linux-musl-x64, osx-x64, osx-arm64) with dotnet build, share them as versioned NuGet packages, and P/Invoke them from .csproj projects, which get the right binary per RID. Use it whenever an .asmproj, AsmFoundation.Sdk, AsmFoundation.Toolchain or an msbuild-sdks entry for assembly is involved, or the user wants to build, link, version, package, test or ship assembly with MSBuild, dotnet build, pack or publish, NuGet, a .sln or .slnx, or CI - including link errors such as "recompile with -fPIC", "undefined symbol", "unrecognised symbol type", "attempted static link of dynamic object", ASM0xxx errors (ASM0010 no RuntimeIdentifiers, ASM0023, ASM0080), RuntimeIdentifiers and per-RID source files, asmsdk.inc or asmsdk-gnu.inc, TargetFramework libc and the C library stand-ins, Windows DLL exports, Mach-O, single-file or NativeAOT publishing of an app that uses asm, and calling assembly from C# or Python; and, in the release after 0.3.0, WebAssembly - browser-wasm and wasi-wasm from .wasm.s sources (asmsdk-wasm.inc), .wasm modules for JavaScript, WASI programs in wasmtime, .NET WebAssembly apps (Blazor) that link asm, wasm-ld and ASM0054 - even when AsmSdk is not named. Not for MASM, CMake or Makefile builds, inline assembly in C, or questions about what an instruction does.
 ---
 
 # AsmSdk: x86-64 and ARM64 assembly projects on MSBuild and NuGet
@@ -27,6 +27,14 @@ are covered by AsmSdk's end-to-end tests on five native build machines (Windows 
 Linux x64 and ARM64, Apple silicon). If `global.json` pins another version, check the SDK's
 site, <https://asmfoundation.github.io/AsmSdk/> (or that release's `docs/asmproj.md`). The
 site has the same facts written for people, so it is the page to link a user to.
+
+**WebAssembly is the third target, in the release after 0.3.0** (on AsmSdk's `main` branch
+now): the RIDs `browser-wasm` and `wasi-wasm`, built from `.s` files qualified for them
+(`name.wasm.s`) in LLVM's WebAssembly assembly, into `.wasm` modules, WASI programs and the
+archives .NET WebAssembly apps link. 0.3.0 stops a wasm RID with `ASM0011`. For anything
+WebAssembly, read `references/webassembly.md` first: its stack-machine model, macros and
+measured traps (no assembler constants, no `.pushsection`, `ENDDATA` sizes) differ from both
+native targets.
 
 **0.3.0 broke 0.2.0 projects on purpose, with no compatibility layer:**
 
@@ -455,6 +463,38 @@ For Linux shared libraries, also consider `<LinkerArg Include="-z defs" />` (an 
 even with an undefined symbol, so a misspelled `extern` otherwise fails only when the library
 loads. With `-z defs` it fails at the link (*verified*). Windows and macOS always refuse.
 
+### Build WebAssembly (the release after 0.3.0)
+
+`references/webassembly.md` is the full story; the shape (*verified* with a `main` build):
+
+```xml
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>
+```
+
+```asm
+// add.wasm.s: a stack machine; parameters are locals 0..n-1, the result is left on the stack
+PROTO int32_t add_ints(int32_t a, int32_t b)
+FUNCTION add_ints, (i32, i32) -> (i32)
+    local.get 0
+    local.get 1
+    i32.add
+ENDFUNCTION add_ints
+```
+
+- Each RID writes `Calc.wasm` (a module exporting its functions and `memory`) and `Calc.a` (the
+  archive a .NET WebAssembly app links); a `wasi-wasm` `Exe` is a WASI command (`dotnet run`
+  starts it in wasmtime). No unqualified file builds wasm: `.wasm.s`, `.browser.s`, `.wasi.s`.
+- A .NET browser or WASI app takes a `ProjectReference` and the same `[LibraryImport("Calc")]`
+  (or the generated bindings); it needs .NET's wasm workload for its own .NET version, else
+  `ASM0054`.
+- Never write an assembler constant (`.set`, `.equ`, `=`): llvm-mc's wasm writer crashes on
+  them (`ASM0019`). End every data label with `ENDDATA name`, every function with `ENDFUNCTION
+  name`, and put `PROTO` before its `FUNCTION`.
+
 ## NASM rules that decide whether code links
 
 Each is a NASM 3.02 or LLVM 23.1.5 result, per output format. The full explanation and
@@ -574,6 +614,9 @@ Every row was reproduced with an AsmSdk release.
 | The app's folder holds two layouts of one library after `dotnet build -o out` | `-o` is every project's output folder, so a wrapper library in between copies its own layout there too | `dotnet publish -o` (no such effect), or the app's own `OutDir` |
 | `bin/Debug/net10.0/win-x64/` holds both a RID's library and a whole `-r win-x64` build | `RidFolders` in a portable build uses the same folder names as `dotnet build -r` | `native/{rid}` when you also build for one RID |
 | `DllNotFoundException` under NativeAOT with a custom folder | no generated loader: a VB or F# project, below .NET 5, or `AsmGenerateNativeLibraryLoader=false` | keep the app folder for NativeAOT, or a resolver of your own |
+| `ASM0019 … absolute addressing not supported!` (wasm, after 0.3.0) | a `.set`/`.equ`/`=` constant in a `.wasm.s` source | the number itself, or a macro emitting `i32.const N` (`references/webassembly.md`) |
+| `ASM0054` (wasm, after 0.3.0) | a .NET WebAssembly app without .NET's native wasm build for its .NET version | `wasm-tools` (`wasm-tools-net10` for net10.0 on SDK 11), or `wasi-experimental` + WASI SDK 25.0 |
+| asm 10-30x faster than C# in a browser, but not in Node | a .NET browser *build* runs with the debugger on in Chromium/Firefox (`debugLevel -1`): unoptimized interpreter, no jiterpreter | time a publish, or `<WasmDebugLevel>0</WasmDebugLevel>` |
 
 ## References: read the one the task needs
 
@@ -589,6 +632,7 @@ Every row was reproduced with an AsmSdk release.
 | `references/ci-and-release.md` | GitHub Actions on several machines, caching, running the outputs, versioning from tags, trusted publishing |
 | `references/troubleshooting.md` | any error message: exact text, cause, fix |
 | `references/internals.md` | the target graph and incremental rules, the RID outer build, extending the build (generated includes, post-link steps) |
+| `references/webassembly.md` | anything `browser-wasm` / `wasi-wasm` (the release after 0.3.0): sources and macros, PROTO on wasm, .NET WebAssembly apps, modules for JavaScript, WASI programs, packages, the measured traps |
 
 ## Scripts
 
@@ -611,7 +655,8 @@ All three need only Python 3.8+ and read nothing outside the paths given (and th
 
 - Seven RIDs: x86-64 and ARM64 on Windows, Linux (glibc, and musl on x64) and macOS. No 32-bit
   targets, no `linux-musl-arm64` build of its own (the RID graph serves it from `linux-arm64`
-  for .NET consumers), no RISC-V.
+  for .NET consumers), no RISC-V. No WebAssembly in 0.3.0 (`ASM0011`): `browser-wasm` and
+  `wasi-wasm` come with the next release (`references/webassembly.md`).
 - Languages: NASM for x64, GNU syntax (llvm-mc) for ARM64 and for x64 files that name a
   qualifier. No MASM, no C compiler.
 - macOS has no freestanding programs (`ASM0015`); a `libc` program needs glibc 2.34+ on Linux.

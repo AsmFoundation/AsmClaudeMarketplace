@@ -25,6 +25,11 @@ builds each:
 - the C library of every OS;
 - .NET consumers by RID.
 
+It also documents **WebAssembly**, the SDK's third target, in the release after 0.3.0 (on
+AsmSdk's `main` branch until then): `browser-wasm` and `wasi-wasm` from `.wasm.s` sources in
+LLVM's WebAssembly assembly, as modules for JavaScript, WASI programs and the archives .NET
+WebAssembly apps link. This branch of the plugin is merged when that SDK release ships.
+
 What the skill marks *verified* was measured. Each behavior was built with an AsmSdk release
 and its bundled tools, or is covered by AsmSdk's end-to-end tests on five build machines.
 What each output format's NASM accepts was measured directive by directive. For a 0.1.0 or
@@ -43,6 +48,7 @@ What each output format's NASM accepts was measured directive by directive. For 
 | `references/ci-and-release.md` | GitHub Actions on the three OSes, trusted publishing to nuget.org, reproducible outputs |
 | `references/troubleshooting.md` | every error found: exact text, cause, fix |
 | `references/internals.md` | the target graph, incremental rules, extension points (generated sources and includes, post-link steps) |
+| `references/webassembly.md` | WebAssembly, the SDK release after 0.3.0: `browser-wasm` and `wasi-wasm`, `.wasm.s` sources and `asmsdk-wasm.inc`, PROTO on wasm, .NET WebAssembly apps, modules for JavaScript, WASI programs, packages, the measured traps |
 
 ## Scripts
 
@@ -50,9 +56,9 @@ All three need only Python 3.8+.
 
 | Script | Does |
 |---|---|
-| `scripts/new_asmproj.py` | scaffolds a project for every RID its kind can build, or the ones `--rids` names: library, static library, executable or objects, `freestanding` or `libc`, packable or not. Starter sources come for both CPUs, written to assemble and link on every OS. It also adds the `global.json` entry and the `.slnx` registration. It never overwrites a file |
-| `scripts/check_asmproj.py` | lints projects and sources with 45 checks. It judges each source for the OSes it builds for: its RIDs, its file-name qualifier, its `%ifdef WINDOWS`/`LINUX`/`MACOS` guards. Examples: a directive that macOS's or Windows' NASM rejects, a call to another library without `PLT`, a plain `global` no DLL exports, a symbol hidden on one OS and exported on another, a `hidden` that NASM ignores, a C function outside the OS's C library, a removed setting, two projects NuGet cannot tell apart, the source-selection errors. It exits 1 on errors |
-| `scripts/inspect_output.py` | summarizes an output or static library using the toolchain's own `llvm-readobj`, and checks expectations for CI. ELF: type, SONAME, NEEDED, RUNPATH, interpreter, exports, imports, stack. PE: DLL or program, exports, imported DLLs and functions, ASLR and DEP. Mach-O: install name, needed libraries, exports and imports by C name |
+| `scripts/new_asmproj.py` | scaffolds a project for every RID its kind can build, or the ones `--rids` names: library, static library, executable or objects, `freestanding` or `libc`, packable or not. Starter sources come for both CPUs, written to assemble and link on every OS, and for WebAssembly when `--rids` names `browser-wasm` or `wasi-wasm` (a `.wasm.s` library, or a WASI command). It also adds the `global.json` entry and the `.slnx` registration. It never overwrites a file |
+| `scripts/check_asmproj.py` | lints projects and sources with 64 checks. It judges each source for the OSes it builds for: its RIDs, its file-name qualifier, its `%ifdef WINDOWS`/`LINUX`/`MACOS` guards. Examples: a directive that macOS's or Windows' NASM rejects, a call to another library without `PLT`, a plain `global` no DLL exports, a symbol hidden on one OS and exported on another, a `hidden` that NASM ignores, a C function outside the OS's C library, a removed setting, two projects NuGet cannot tell apart, the source-selection errors. For WebAssembly (the SDK release after 0.3.0), 19 more: the project rules (a browser program, a libc module, a define with a value, an export pattern) and llvm-mc's measured traps in `.wasm.s` sources (an assembler constant, a data label without `ENDDATA`, `PROTO` inside a function, an untyped `select`, `return_call` where .NET links the code, a call to a function llvm-mc has not seen, a `PROTO` whose C types lower to another wasm type). It exits 1 on errors |
+| `scripts/inspect_output.py` | summarizes an output or static library using the toolchain's own `llvm-readobj`, and checks expectations for CI. ELF: type, SONAME, NEEDED, RUNPATH, interpreter, exports, imports, stack. PE: DLL or program, exports, imported DLLs and functions, ASLR and DEP. Mach-O: install name, needed libraries, exports and imports by C name. WebAssembly, read in Python: module, WASI command, object or archive; exports, imports, memory, custom sections and the `asmapi` records (`--expect-import`) |
 
 Two test modules, standard library only:
 

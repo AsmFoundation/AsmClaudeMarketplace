@@ -1,0 +1,5 @@
+<Project Sdk="AsmFoundation.Sdk">
+  <PropertyGroup>
+    <RuntimeIdentifiers>browser-wasm;wasi-wasm</RuntimeIdentifiers>
+  </PropertyGroup>
+</Project>

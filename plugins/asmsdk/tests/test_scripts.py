@@ -7,8 +7,10 @@ errors are caught); the 0.3.0 checks also get fixtures for each platform rule (w
 and Windows' NASM output rejects, the RID rules, the source selection). The fixtures are
 generated into a temporary folder from the dictionaries below, which keeps them readable next
 to the assertions. No .NET SDK, NASM or LLVM is needed: inspect_output.py is tested on canned
-llvm-readobj output (JSON for ELF, text for PE and Mach-O), and the per-OS C library lists on a
-fake SDK package folder.
+llvm-readobj output (JSON for ELF, text for PE and Mach-O) and on two small WebAssembly files
+built with a main build of AsmSdk (a WASI command and a library's archive, embedded below),
+and the per-OS C library lists on a fake SDK package folder. The WebAssembly fixtures (the SDK
+release after 0.3.0) live under wasm/, whose global.json pins a later version.
 
 Run: python -m unittest discover -s plugins/asmsdk/tests   (Python 3.8+, standard library only)
 """
@@ -53,6 +55,18 @@ inspect_output = load("inspect_output")
 #: Linux-only sources (the RID the fixtures default to): ELF's own directives are right there.
 NOTE = "section .note.GNU-stack noalloc noexec nowrite progbits\n"
 GOOD_FN = "default rel\nsection .text\nglobal {n}:function ({n}.end - {n})\n{n}:\n    xor eax, eax\n    ret\n.end:\n" + NOTE
+
+#: A WebAssembly function for the wasm fixtures, through asmsdk-wasm.inc (LLVM's wasm syntax).
+WASM_FN = "FUNCTION {n}, () -> (i32)\n    i32.const 7\nENDFUNCTION {n}\n"
+
+#: A wasm source that uses every construct the linter must accept: PROTO, a call to a function
+#: further down declared with EXTERN_FUNCTION, a LOCAL_FUNCTION, sized and aligned data.
+GOOD_WASM = ("PROTO int32_t g_add(int32_t a, int32_t b)\nFUNCTION g_add, (i32, i32) -> (i32)\n"
+             "    local.get 0\n    local.get 1\n    i32.add\nENDFUNCTION g_add\n\n"
+             "EXTERN_FUNCTION g_later, () -> (i32)\nFUNCTION g_twice, () -> (i32)\n"
+             "    CALL g_later\n    CALL g_later\n    i32.add\nENDFUNCTION g_twice\n\n"
+             "LOCAL_FUNCTION g_later, () -> (i32)\n    i32.const 21\nENDFUNCTION g_later\n\n"
+             "    RODATA\n    .p2align 2\ng_table:\n    .int 1, 2, 3\nENDDATA g_table\n")
 
 #: A source for every OS: asmsdk.inc's FUNCTION, the note only on Linux.
 PORTABLE_FN = ('default rel\n%include "asmsdk.inc"\nsection .text\nFUNCTION {n}\n    xor eax, eax\n    RETURN\nENDFUNCTION\n'
@@ -243,6 +257,64 @@ FIXTURES: Dict[str, str] = {
                          "de_table: dq 1\n%ifdef LINUX\n" + NOTE + "%endif\n"),
     # A solution entry without the type GUID.
     "Bad.slnx": '<Solution>\n  <Project Path="good/Good.asmproj" />\n</Solution>\n',
+    # WebAssembly with the 0.3.0 the root global.json pins: nuget.org's 0.3.0 stops it (ASM0011).
+    "wasm030/Wasm030.asmproj": proj(rids="browser-wasm"),
+    "wasm030/a.wasm.s": WASM_FN.format(n="w030"),
+    # --- WebAssembly, the release after 0.3.0: its own global.json pins a later version. ---
+    "wasm/global.json": '{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.4.0" } }\n',
+    "wasm/good/Good.asmproj": proj(rids="browser-wasm;wasi-wasm"),
+    "wasm/good/good.wasm.s": GOOD_WASM,
+    # One project for Linux x64 and the browser: each RID takes its own source.
+    "wasm/mixed/Mixed.asmproj": proj('<LinkerArg Include="-z defs" />', rids="linux-x64;browser-wasm"),
+    "wasm/mixed/mixed.asm": GOOD_FN.format(n="m_fn"),
+    "wasm/mixed/mixed.wasm.s": WASM_FN.format(n="m_fn"),
+    # Every trap of llvm-mc's wasm parser and writer, one fixture each.
+    "wasm/const/Const.asmproj": proj(rids="browser-wasm"),
+    "wasm/const/c.wasm.s": ".set LIMIT, 4096\nFUNCTION c_limit, () -> (i32)\n    i32.const LIMIT\nENDFUNCTION c_limit\n",
+    "wasm/nosize/NoSize.asmproj": proj(rids="browser-wasm"),
+    "wasm/nosize/n.wasm.s": WASM_FN.format(n="n_fn") + "    DATA\n    .p2align 2\nn_counter:\n    .int 0\n",
+    "wasm/text/Text.asmproj": proj(rids="browser-wasm"),
+    "wasm/text/t.wasm.s": "    RODATA\nt_byte:\n    .byte 1\nENDDATA t_byte\n    .text\n" + WASM_FN.format(n="t_fn"),
+    "wasm/ints/Ints.asmproj": proj(rids="browser-wasm"),
+    "wasm/ints/i.wasm.s": WASM_FN.format(n="i_fn") + "    RODATA\ni_pair:\n    .int32 1, 2\nENDDATA i_pair\n",
+    "wasm/bss/Bss.asmproj": proj(rids="browser-wasm"),
+    "wasm/bss/b.wasm.s": WASM_FN.format(n="b_fn") + ".bss\nb_buffer:\n    .skip 64\nENDDATA b_buffer\n",
+    "wasm/inside/Inside.asmproj": proj(rids="browser-wasm"),
+    "wasm/inside/i.wasm.s": "FUNCTION in_fn, () -> (i32)\nPROTO int32_t in_fn(void)\n    i32.const 1\nENDFUNCTION in_fn\n",
+    "wasm/noend/NoEnd.asmproj": proj(rids="browser-wasm"),
+    "wasm/noend/e.wasm.s": "FUNCTION ne_fn, () -> (i32)\n    i32.const 1\n",
+    "wasm/select/Select.asmproj": proj(rids="browser-wasm"),
+    "wasm/select/s.wasm.s": "FUNCTION s_pick, (i32, i32, i32) -> (i32)\n    local.get 0\n    local.get 1\n    local.get 2\n    select\nENDFUNCTION s_pick\n",
+    "wasm/retcall/RetCall.asmproj": proj(rids="browser-wasm"),
+    "wasm/retcall/r.wasm.s": WASM_FN.format(n="r_base") + "FUNCTION r_tail, () -> (i32)\n    return_call r_base\nENDFUNCTION r_tail\n",
+    "wasm/struct/Struct.asmproj": proj(rids="browser-wasm"),
+    "wasm/struct/s.wasm.s": "STRUCT point { int32_t x; int32_t y; }\n" + WASM_FN.format(n="st_fn"),
+    "wasm/unseen/Unseen.asmproj": proj(rids="browser-wasm"),
+    "wasm/unseen/u.wasm.s": "FUNCTION u_first, () -> (i32)\n    CALL u_second\nENDFUNCTION u_first\n" + WASM_FN.format(n="u_second"),
+    "wasm/wasi/Wasi.asmproj": proj("<OutputType>Exe</OutputType>", rids="wasi-wasm"),
+    "wasm/wasi/main.wasi.s": ("IMPORT_FUNCTION wasi_snapshot_preview1, proc_exit, (i32) -> ()\n"
+                              "FUNCTION _start, () -> ()\n    ADDRESS w_status\n    i32.load 0\n    CALL proc_exit\nENDFUNCTION _start\n"
+                              "    DATA\nw_status:\n    .int 0\nENDDATA w_status\n"),
+    "wasm/proto/Proto.asmproj": proj(rids="browser-wasm"),
+    "wasm/proto/p.wasm.s": "PROTO int64_t p_wide(int64_t x)\nFUNCTION p_wide, (i32) -> (i32)\n    local.get 0\nENDFUNCTION p_wide\n",
+    "wasm/local/Local.asmproj": proj(rids="browser-wasm"),
+    "wasm/local/l.wasm.s": "PROTO int32_t l_inner(void)\nLOCAL_FUNCTION l_inner, () -> (i32)\n    i32.const 1\nENDFUNCTION l_inner\n",
+    "wasm/browserexe/BrowserExe.asmproj": proj("<OutputType>Exe</OutputType>", rids="browser-wasm"),
+    "wasm/browserexe/main.wasm.s": "FUNCTION _start, () -> ()\nENDFUNCTION _start\n",
+    "wasm/libcmod/LibcMod.asmproj": proj("<TargetFramework>libc</TargetFramework>", rids="wasi-wasm"),
+    "wasm/libcmod/a.wasm.s": WASM_FN.format(n="lm_fn"),
+    "wasm/defval/DefVal.asmproj": proj("<DefineConstants>FAST;LEVEL=3</DefineConstants>", rids="browser-wasm"),
+    "wasm/defval/a.wasm.s": WASM_FN.format(n="dv_fn"),
+    "wasm/exports/Exports.asmproj": proj("<ExportsFile>exports.map</ExportsFile>", rids="browser-wasm"),
+    "wasm/exports/exports.map": "/* local: * is fine, e_* is not */\nE_1.0 {\n  global:\n    e_*;\n  local:\n    *;\n};\n",
+    "wasm/exports/a.wasm.s": WASM_FN.format(n="e_fn"),
+    "wasm/exports_ok/ExportsOk.asmproj": proj("<ExportsFile>exports.map</ExportsFile>", rids="browser-wasm"),
+    "wasm/exports_ok/exports.map": "/* every name listed: e_* in a comment is not a pattern */\nE_1.0 {\n  global:\n    eo_fn;\n  local:\n    *;\n};\n",
+    "wasm/exports_ok/a.wasm.s": WASM_FN.format(n="eo_fn"),
+    "wasm/nasm/Nasm.asmproj": proj(rids="browser-wasm"),
+    "wasm/nasm/kernel.wasm.asm": GOOD_FN.format(n="k_fn"),
+    "wasm/nosource/NoSource.asmproj": proj(rids="browser-wasm"),
+    "wasm/nosource/a.s": ".globl ns_fn\nns_fn:\n    ret\n",
 }
 
 #: Expected error- and warning-level codes per fixture path (info findings are not asserted:
@@ -288,6 +360,31 @@ EXPECTED: Dict[str, Set[str]] = {
     "guardedlate/GuardedLate.asmproj": {"ASMSRC013"},
     "dataexport/DataExport.asmproj": {"ASMSRC021"},
     "Bad.slnx": {"ASMSLN002"},
+    # ASMPRJ019 is info (a main build in a local feed is also 0.3.0): asserted in its own test.
+    "wasm030/Wasm030.asmproj": set(),
+    "wasm/good/Good.asmproj": set(),
+    "wasm/mixed/Mixed.asmproj": set(),
+    "wasm/const/Const.asmproj": {"ASMWASM001"},
+    "wasm/nosize/NoSize.asmproj": {"ASMWASM002"},
+    "wasm/text/Text.asmproj": {"ASMWASM003"},
+    "wasm/ints/Ints.asmproj": {"ASMWASM004"},
+    "wasm/bss/Bss.asmproj": {"ASMWASM005"},
+    "wasm/inside/Inside.asmproj": {"ASMWASM006"},
+    "wasm/noend/NoEnd.asmproj": {"ASMWASM007"},
+    "wasm/select/Select.asmproj": {"ASMWASM008"},
+    "wasm/retcall/RetCall.asmproj": {"ASMWASM009"},
+    "wasm/struct/Struct.asmproj": {"ASMWASM010"},
+    "wasm/unseen/Unseen.asmproj": {"ASMWASM011"},
+    "wasm/wasi/Wasi.asmproj": {"ASMWASM012"},
+    "wasm/proto/Proto.asmproj": {"ASMWASM013"},
+    "wasm/local/Local.asmproj": {"ASMWASM014"},
+    "wasm/browserexe/BrowserExe.asmproj": {"ASMPRJ020"},
+    "wasm/libcmod/LibcMod.asmproj": {"ASMPRJ021"},
+    "wasm/defval/DefVal.asmproj": {"ASMPRJ022"},
+    "wasm/exports/Exports.asmproj": {"ASMPRJ023"},
+    "wasm/exports_ok/ExportsOk.asmproj": set(),
+    "wasm/nasm/Nasm.asmproj": {"ASMSRC014", "ASMSRC016"},
+    "wasm/nosource/NoSource.asmproj": {"ASMSRC016"},
 }
 
 
@@ -370,6 +467,14 @@ class CheckAsmprojTests(unittest.TestCase):
                     self.assertEqual(expected, {f["code"] for f in own}, json.dumps(own, indent=1))
                     has_error = any(f["severity"] == "error" for f in own)
                     self.assertEqual(1 if has_error else 0, code)
+
+    def test_wasm_with_sdk_030_is_an_info(self) -> None:
+        """A wasm RID with 0.3.0 pinned is reported (nuget.org's 0.3.0 stops it with ASM0011) as info:
+        a build of AsmSdk's main in a local feed carries the same version and builds it."""
+        with nuget_packages(None):
+            code, findings = run_json(check_asmproj, [os.path.join(self.tmp.name, "wasm030/Wasm030.asmproj")])
+        self.assertEqual(0, code)
+        self.assertEqual([("info", "ASMPRJ019")], [(f["severity"], f["code"]) for f in findings if f["code"] == "ASMPRJ019"])
 
     def test_platform_findings_name_the_platform(self) -> None:
         """A directive one format rejects is reported for that format, as an error when the RIDs are declared."""
@@ -528,6 +633,44 @@ class NewAsmprojTests(unittest.TestCase):
                 self.assertEqual(2, new_asmproj.main([os.path.join(tmp, "A"), "--rids", "linux-x86", "--root", tmp]))
                 self.assertEqual(2, new_asmproj.main([os.path.join(tmp, "B"), "--kind", "exe", "--rids", "osx-arm64", "--root", tmp]))
             self.assertFalse(os.path.exists(os.path.join(tmp, "B", "B.asmproj")))
+
+    def test_wasm_scaffolds_are_lint_clean(self) -> None:
+        """WebAssembly scaffolds (a library for both RIDs, beside a native RID, a WASI program) lint clean with a later SDK."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cases = [["Calc", "--rids", "browser-wasm;wasi-wasm"], ["Mixed", "--rids", "linux-x64;browser-wasm"],
+                     ["Hello", "--kind", "exe", "--rids", "wasi-wasm"], ["Arch", "--kind", "static", "--rids", "browser-wasm"]]
+            for case in cases:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(0, new_asmproj.main([os.path.join(tmp, case[0])] + case[1:]
+                                                         + ["--root", tmp, "--sdk-version", "0.4.0"]))
+            with nuget_packages(None):
+                _, findings = run_json(check_asmproj, [tmp])
+            bad = [f for f in findings if f["severity"] in ("error", "warning")]
+            self.assertEqual([], bad)
+            with open(os.path.join(tmp, "Calc", "calc.wasm.s"), encoding="utf-8") as f:
+                self.assertIn("PROTO int32_t calc_add(int32_t a, int32_t b)", f.read())
+            # Beside a native RID the wasm source carries no PROTO: the native starter has none,
+            # and the SDK requires the same lines for every RID (ASM0133).
+            with open(os.path.join(tmp, "Mixed", "mixed.wasm.s"), encoding="utf-8") as f:
+                self.assertNotIn("\nPROTO ", f.read())
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "Mixed", "mixed.asm")))
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "Hello", "main.wasi.s")))
+            self.assertFalse(os.path.exists(os.path.join(tmp, "Calc", "include")))
+
+    def test_wasm_refusals(self) -> None:
+        """A browser program, a libc module and a WASI program beside native RIDs are usage errors; 0.3.0 gets a note."""
+        with tempfile.TemporaryDirectory() as tmp:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(2, new_asmproj.main([os.path.join(tmp, "A"), "--kind", "exe", "--rids", "browser-wasm", "--root", tmp]))
+                self.assertEqual(2, new_asmproj.main([os.path.join(tmp, "B"), "--framework", "libc", "--rids", "wasi-wasm", "--root", tmp]))
+                self.assertEqual(2, new_asmproj.main([os.path.join(tmp, "C"), "--kind", "exe", "--rids", "linux-x64;wasi-wasm", "--root", tmp]))
+            self.assertIn("ASM0017", err.getvalue())
+            self.assertIn("ASM0016", err.getvalue())
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(0, new_asmproj.main([os.path.join(tmp, "D"), "--rids", "browser-wasm", "--root", tmp]))
+            self.assertIn("ASM0011", out.getvalue())
 
     def test_never_overwrites(self) -> None:
         """A second run keeps every file and leaves its content unchanged."""
@@ -690,6 +833,13 @@ class InspectOutputTests(unittest.TestCase):
         "NoteSections": [{"NoteSection": {"Notes": [{"Build ID": "abc"}]}}],
     }
 
+    #: hello.wasm: a WASI command built from the WASI example of references/webassembly.md
+    #: (imports fd_write and proc_exit, exports _start and memory, one asmapi record).
+    WASI_COMMAND = "AGFzbQEAAAABEANgBH9/f38Bf2ABfwBgAAACRgIWd2FzaV9zbmFwc2hvdF9wcmV2aWV3MQhmZF93cml0ZQAAFndhc2lfc25hcHNob3RfcHJldmlldzEJcHJvY19leGl0AAEDAgECBQMBAAIHEwIGbWVtb3J5AgAGX3N0YXJ0AAIKIwEhAEEBQZiAhIAAQQFBoICEgAAQgICAgAAaQQAQgYCAgAALCzICAEGAgAQLF2hlbGxvIGZyb20gV2ViQXNzZW1ibHkKAEGYgAQLDAAAAQAXAAAAAAAAAAAcBmFzbWFwaWZuIDEgX3N0YXJ0ICgpIC0+ICgpAABFBG5hbWUACwpIZWxsby53YXNtAR4DAAhmZF93cml0ZQEJcHJvY19leGl0AgZfc3RhcnQJEQIABy5yb2RhdGEBBS5kYXRh"
+
+    #: SumLib.a: the archive of a browser-wasm library with one function, sum_i32, and its PROTO.
+    WASM_ARCHIVE = "ITxhcmNoPgovICAgICAgICAgICAgICAgMCAgICAgICAgICAgMCAgICAgMCAgICAgMCAgICAgICAxNiAgICAgICAgYAoAAAABAAAAVHN1bV9pMzIAc3VtLndhc20uby8gICAgIDAgICAgICAgICAgIDAgICAgIDAgICAgIDY0NCAgICAgMzUyICAgICAgIGAKAGFzbQEAAAABh4CAgAABYAJ/fwF/ApiAgIAAAQNlbnYPX19saW5lYXJfbWVtb3J5AgAAA4KAgIAAAQAMgYCAgAABCq2AgIAAASsBAX8CQANAIAFFDQEgAiAAKAIAaiECIABBBGohACABQQFrIQEMAAsLIAILC4aAgIAAAQBBAAsAAOSAgIAABmFzbWFwaXByb3RvIGludDMyX3Qgc3VtX2kzMihjb25zdCBpbnQzMl90KiB2YWx1ZXMsIGludDMyX3QgY291bnQpAGZuIDEgc3VtX2kzMiAoaTMyLCBpMzIpIC0+IChpMzIpAADvgICAAAdsaW5raW5nAgjCgICAAAUBAgdSRUxFQVNFAAAAAQIMRlJFRVNUQU5ESU5HAAAAAQIHQlJPV1NFUgAAAAECBFdBU00AAAAAAAAHc3VtX2kzMgWYgICAAAEULmRhdGEuYXNtc2RrX2RlZmluZXMAAA=="
+
     @staticmethod
     def expectations(**values) -> object:
         """An argparse namespace with every --expect-* option, unset unless given.
@@ -701,7 +851,7 @@ class InspectOutputTests(unittest.TestCase):
             The namespace check_expectations reads.
         """
         defaults = dict(expect_type=None, expect_export=None, expect_needed=None, expect_no_needed=False,
-                        expect_runpath=None, expect_nonexec_stack=False)
+                        expect_runpath=None, expect_nonexec_stack=False, expect_import=None)
         defaults.update(values)
         return inspect_output.argparse.Namespace(**defaults)
 
@@ -741,6 +891,38 @@ class InspectOutputTests(unittest.TestCase):
         self.assertEqual([], inspect_output.check_expectations(s, ok))
         bad = self.expectations(expect_type="pie", expect_export=["missing"], expect_no_needed=True)
         self.assertEqual(3, len(inspect_output.check_expectations(s, bad)))
+
+    def test_wasm_command_summary(self) -> None:
+        """A WASI command: its kind, imports, exports, memory and asmapi record, read without llvm-readobj."""
+        import base64
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "hello.wasm")
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(self.WASI_COMMAND))
+            self.assertTrue(inspect_output.is_wasm_file(path))
+            s = inspect_output.inspect(path, None)
+        self.assertEqual(("Wasm", "command"), (s["format"], s["kind"]))
+        self.assertEqual(["wasi_snapshot_preview1.fd_write", "wasi_snapshot_preview1.proc_exit"], s["imports"])
+        self.assertEqual([("memory", "memory"), ("_start", "func")], [(e["name"], e["kind"]) for e in s["exports"]])
+        self.assertEqual((2, None, False), (s["memory"]["min_pages"], s["memory"]["max_pages"], s["memory"]["imported"]))
+        self.assertEqual(["fn 1 _start () -> ()"], s["asmapi"])
+        ok = self.expectations(expect_type="command", expect_export=["_start"], expect_import=["wasi_snapshot_preview1.fd_write"])
+        self.assertEqual([], inspect_output.check_expectations(s, ok))
+        bad = self.expectations(expect_type="module", expect_import=["env.missing"])
+        self.assertEqual(2, len(inspect_output.check_expectations(s, bad)))
+        self.assertIn("kind: WASI command", inspect_output.format_text(s))
+
+    def test_wasm_archive_summary(self) -> None:
+        """A wasm RID's static library: its member, the global it defines (the define labels are local) and the PROTO records."""
+        import base64
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "SumLib.a")
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(self.WASM_ARCHIVE))
+            s = inspect_output.inspect(path, None)
+        self.assertEqual(("Wasm", "archive"), (s["format"], s["kind"]))
+        self.assertEqual([{"member": "sum.wasm.o", "defines": ["sum_i32"], "references": []}], s["members"])
+        self.assertEqual(["proto int32_t sum_i32(const int32_t* values, int32_t count)", "fn 1 sum_i32 (i32, i32) -> (i32)"], s["asmapi"])
 
     def test_pe_summary(self) -> None:
         """A DLL: its kind, DEP/ASLR flags, imported DLL and functions, and its exports."""

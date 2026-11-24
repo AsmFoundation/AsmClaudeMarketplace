@@ -13,14 +13,22 @@ its JSON mode for ELF, which has one, and in its LLVM text mode for PE and Mach-
 not) and prints one compact summary, or checks expectations and exits 1 when one fails (for CI
 and for verifying a fix).
 
-It needs `llvm-readobj`. The AsmSdk bundled toolchain package already contains one, and the
-script finds it in the NuGet global packages folder by itself; `--readobj` or PATH work too.
-Only the Python standard library is used (Python 3.8+).
+For WebAssembly (the browser-wasm and wasi-wasm RIDs of the SDK release after 0.3.0): a
+module, a WASI command, an object or an archive of objects, read in Python from the binary
+format itself: what the module exports (its functions and `memory`), what it imports (the host
+functions: `env` for JavaScript, `wasi_snapshot_preview1` for WASI), its memory, its custom
+sections, and AsmSdk's `asmapi` records (the PROTO lines and function signatures the C#
+bindings come from).
+
+It needs `llvm-readobj` for ELF, PE and Mach-O, not for WebAssembly. The AsmSdk bundled
+toolchain package already contains one, and the script finds it in the NuGet global packages
+folder by itself; `--readobj` or PATH work too. Only the Python standard library is used
+(Python 3.8+).
 
 Usage:
     inspect_output.py <file> [<file> ...] [--json] [--readobj PATH]
-                      [--expect-type shared|pie|static|object|archive|dll|exe|dylib|executable]
-                      [--expect-export NAME ...] [--expect-needed LIB ...]
+                      [--expect-type shared|pie|static|object|archive|dll|exe|dylib|executable|module|command]
+                      [--expect-export NAME ...] [--expect-needed LIB ...] [--expect-import MODULE.NAME ...]
                       [--expect-no-needed] [--expect-runpath VALUE] [--expect-nonexec-stack]
 
 Exit codes: 0 = summarized and every expectation held; 1 = an expectation failed;
@@ -616,21 +624,385 @@ def summarize_coff_object(path: str, readobj: str) -> Dict[str, Any]:
     return summary
 
 
-def inspect(path: str, readobj: str) -> Dict[str, Any]:
+#: The first four bytes of every WebAssembly binary, module or object: "\0asm".
+WASM_MAGIC = b"\0asm"
+
+#: Section ids of the WebAssembly binary format (core spec, "Modules / Binary Format").
+WASM_CUSTOM, WASM_IMPORT, WASM_MEMORY, WASM_EXPORT = 0, 2, 5, 7
+
+#: Import and export kinds, by their byte in the binary format.
+WASM_EXTERNAL_KINDS = {0: "func", 1: "table", 2: "memory", 3: "global", 4: "tag"}
+
+#: Symbol-table flags of LLVM's "linking" section (tool-conventions/Linking.md).
+WASM_SYM_BINDING_LOCAL, WASM_SYM_VISIBILITY_HIDDEN, WASM_SYM_UNDEFINED, WASM_SYM_EXPLICIT_NAME = 0x2, 0x4, 0x10, 0x40
+
+
+def _leb_u(data: bytes, pos: int) -> Tuple[int, int]:
+    """Read one unsigned LEB128 number.
+
+    Args:
+        data: The bytes.
+        pos: Where the number starts.
+
+    Returns:
+        (value, position after it).
+
+    Raises:
+        InspectError: The number runs past the end or past 64 bits (a truncated or foreign file).
+    """
+    value = shift = 0
+    while True:
+        if pos >= len(data) or shift > 63:
+            raise InspectError("malformed WebAssembly: a LEB128 number runs past the data")
+        byte = data[pos]
+        pos += 1
+        value |= (byte & 0x7F) << shift
+        shift += 7
+        if not byte & 0x80:
+            return value, pos
+
+
+def _wasm_name(data: bytes, pos: int) -> Tuple[str, int]:
+    """Read one length-prefixed UTF-8 name.
+
+    Args:
+        data: The bytes.
+        pos: Where the length starts.
+
+    Returns:
+        (name, position after it); undecodable bytes become U+FFFD rather than an error.
+    """
+    length, pos = _leb_u(data, pos)
+    return data[pos:pos + length].decode("utf-8", "replace"), pos + length
+
+
+def _wasm_sections(data: bytes) -> List[Tuple[int, str, int, int]]:
+    """Split a WebAssembly binary into its sections.
+
+    Args:
+        data: The whole module or object, starting with WASM_MAGIC and the version.
+
+    Returns:
+        (id, custom section name or "", payload start, payload end) per section, in order. A
+        custom section's payload starts after its name.
+
+    Raises:
+        InspectError: A section runs past the end of the data.
+    """
+    sections = []
+    pos = 8
+    while pos < len(data):
+        section_id = data[pos]
+        size, pos = _leb_u(data, pos + 1)
+        end = pos + size
+        if end > len(data):
+            raise InspectError("malformed WebAssembly: a section runs past the end of the file")
+        name = ""
+        start = pos
+        if section_id == WASM_CUSTOM:
+            name, start = _wasm_name(data, pos)
+        sections.append((section_id, name, start, end))
+        pos = end
+    return sections
+
+
+def _wasm_limits(data: bytes, pos: int) -> Tuple[Dict[str, Any], int]:
+    """Read a memory or table limits record (flags, minimum, optional maximum).
+
+    Args:
+        data: The bytes.
+        pos: Where the flags byte is.
+
+    Returns:
+        ({"min_pages", "max_pages" (None when unbounded), "shared"}, position after it).
+    """
+    flags = data[pos]
+    minimum, pos = _leb_u(data, pos + 1)
+    maximum = None
+    if flags & 1:
+        maximum, pos = _leb_u(data, pos)
+    return {"min_pages": minimum, "max_pages": maximum, "shared": bool(flags & 2)}, pos
+
+
+def _wasm_imports(data: bytes, start: int) -> List[Dict[str, Any]]:
+    """Read the import section.
+
+    Args:
+        data: The bytes.
+        start: The section payload's start.
+
+    Returns:
+        {"module", "name", "kind", and "memory" for a memory import} per import, in order (the
+        order gives imported functions the first function indexes).
+
+    Raises:
+        InspectError: An import kind this reader does not know (a newer proposal).
+    """
+    count, pos = _leb_u(data, start)
+    imports = []
+    for _ in range(count):
+        module, pos = _wasm_name(data, pos)
+        name, pos = _wasm_name(data, pos)
+        kind = data[pos]
+        pos += 1
+        entry: Dict[str, Any] = {"module": module, "name": name, "kind": WASM_EXTERNAL_KINDS.get(kind, str(kind))}
+        if kind == 0:                       # function: its type index
+            _, pos = _leb_u(data, pos)
+        elif kind == 1:                     # table: element type, then limits
+            _, pos = _wasm_limits(data, pos + 1)
+        elif kind == 2:                     # memory: limits
+            entry["memory"], pos = _wasm_limits(data, pos)
+        elif kind == 3:                     # global: value type, mutability
+            pos += 2
+        elif kind == 4:                     # tag: attribute, type index
+            _, pos = _leb_u(data, pos + 1)
+        else:
+            raise InspectError(f"malformed or newer WebAssembly: import kind {kind} is unknown")
+        imports.append(entry)
+    return imports
+
+
+def _wasm_symbols(data: bytes, start: int, end: int, imports: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Read the symbol table of an object file's "linking" custom section.
+
+    Args:
+        data: The bytes.
+        start: The linking payload's start (after the section name).
+        end: Its end.
+        imports: The object's imports, which name undefined functions without an explicit name.
+
+    Returns:
+        {"name", "kind" (function, data, global, section, tag, table), "defined", "binding"
+        (Global, Local), "hidden"} per symbol. Section symbols have no useful name and are
+        returned with the name "".
+    """
+    kinds = {0: "function", 1: "data", 2: "global", 3: "section", 4: "tag", 5: "table"}
+    import_names = {"function": [i["name"] for i in imports if i["kind"] == "func"],
+                    "global": [i["name"] for i in imports if i["kind"] == "global"],
+                    "tag": [i["name"] for i in imports if i["kind"] == "tag"],
+                    "table": [i["name"] for i in imports if i["kind"] == "table"]}
+    _, pos = _leb_u(data, start)                        # the linking metadata version (2)
+    symbols: List[Dict[str, Any]] = []
+    while pos < end:
+        subsection = data[pos]
+        size, pos = _leb_u(data, pos + 1)
+        next_pos = pos + size
+        if subsection == 8:                             # WASM_SYMBOL_TABLE
+            count, pos = _leb_u(data, pos)
+            for _ in range(count):
+                kind = kinds.get(data[pos], str(data[pos]))
+                flags, pos = _leb_u(data, pos + 1)
+                defined = not flags & WASM_SYM_UNDEFINED
+                name = ""
+                if kind in ("function", "global", "tag", "table"):
+                    index, pos = _leb_u(data, pos)
+                    if defined or flags & WASM_SYM_EXPLICIT_NAME:
+                        name, pos = _wasm_name(data, pos)
+                    elif index < len(import_names[kind]):
+                        name = import_names[kind][index]
+                elif kind == "data":
+                    name, pos = _wasm_name(data, pos)
+                    if defined:                         # segment, offset, size
+                        for _ in range(3):
+                            _, pos = _leb_u(data, pos)
+                else:                                   # section: the section's index
+                    _, pos = _leb_u(data, pos)
+                symbols.append({"name": name, "kind": kind, "defined": defined,
+                                "binding": "Local" if flags & WASM_SYM_BINDING_LOCAL else "Global",
+                                "hidden": bool(flags & WASM_SYM_VISIBILITY_HIDDEN)})
+        pos = next_pos
+    return symbols
+
+
+def summarize_wasm(path: str, data: bytes) -> Dict[str, Any]:
+    """Summarize a WebAssembly module (browser-wasm or wasi-wasm library), WASI program or object.
+
+    Read in Python, without llvm-readobj: the binary format is simple, and the facts that
+    matter are the module's own: what it exports (its functions and `memory`), what it imports
+    (the host functions IMPORT_FUNCTION declared: `env` for JavaScript, `wasi_snapshot_preview1`
+    for WASI), its memory, and its custom sections, among them AsmSdk's `asmapi` records (one
+    per PROTO line and function macro, which wasm-ld keeps even with --strip-all).
+
+    Args:
+        path: The file, for the report.
+        data: Its bytes.
+
+    Returns:
+        A dictionary with file, format="Wasm", kind ("object" when it has LLVM's "linking"
+        section, "command" when it exports `_start` (a WASI program), else "module"), exports
+        ({name, kind}), imports ("module.name" strings), imports_detail, memory (defined or
+        imported limits, or None), custom_sections, asmapi (the records, in order), symbols
+        (an object's defined and undefined globals), and needed=None (WebAssembly links no
+        libraries at run time).
+
+    Raises:
+        InspectError: The data is not a well-formed WebAssembly binary.
+    """
+    sections = _wasm_sections(data)
+    imports: List[Dict[str, Any]] = []
+    exports: List[Dict[str, str]] = []
+    memory: Optional[Dict[str, Any]] = None
+    customs: List[str] = []
+    records: List[str] = []
+    linking = None
+    for section_id, name, start, end in sections:
+        if section_id == WASM_IMPORT:
+            imports = _wasm_imports(data, start)
+            memory = next((dict(i["memory"], imported=True) for i in imports if i["kind"] == "memory"), memory)
+        elif section_id == WASM_MEMORY:
+            count, pos = _leb_u(data, start)
+            if count:
+                memory, _ = _wasm_limits(data, pos)
+                memory["imported"] = False
+        elif section_id == WASM_EXPORT:
+            count, pos = _leb_u(data, start)
+            for _ in range(count):
+                export_name, pos = _wasm_name(data, pos)
+                kind = data[pos]
+                _, pos = _leb_u(data, pos + 1)
+                exports.append({"name": export_name, "kind": WASM_EXTERNAL_KINDS.get(kind, str(kind))})
+        elif section_id == WASM_CUSTOM:
+            customs.append(name)
+            if name == "asmapi":
+                records.extend(r for r in data[start:end].decode("utf-8", "replace").split("\0") if r)
+            elif name == "linking":
+                linking = (start, end)
+    kind = "object" if linking else ("command" if any(e["name"] == "_start" for e in exports) else "module")
+    summary: Dict[str, Any] = {
+        "file": path, "format": "Wasm", "kind": kind, "exports": exports,
+        "imports": [f"{i['module']}.{i['name']}" for i in imports if i["kind"] != "memory"],
+        "imports_detail": imports, "memory": memory, "custom_sections": customs, "asmapi": records,
+        "needed": None,
+    }
+    if linking:
+        symbols = _wasm_symbols(data, linking[0], linking[1], imports)
+        summary["symbols"] = symbols
+        # An object exports nothing yet: its defined global symbols are what a link can use.
+        summary["exports"] = [{"name": s["name"], "kind": s["kind"]} for s in symbols
+                              if s["defined"] and s["binding"] == "Global" and s["name"] and s["kind"] != "section"]
+    return summary
+
+
+def _ar_members(data: bytes) -> List[Tuple[str, bytes]]:
+    """Split a Unix ar archive (llvm-ar's GNU format) into its members.
+
+    Args:
+        data: The whole archive, starting with "!<arch>\\n".
+
+    Returns:
+        (member name, member bytes) per member, without the symbol table ("/") and the
+        long-name table ("//"), whose entries resolve names written as "/<offset>".
+    """
+    members = []
+    long_names = b""
+    pos = 8
+    while pos + 60 <= len(data):
+        header = data[pos:pos + 60]
+        name = header[:16].decode("ascii", "replace").rstrip()
+        size = int(header[48:58].decode("ascii").strip() or 0)
+        body = data[pos + 60:pos + 60 + size]
+        pos += 60 + size + (size & 1)               # members are 2-byte aligned
+        if name == "//":
+            long_names = body
+            continue
+        if name in ("/", "/SYM64/"):
+            continue
+        if name.startswith("/") and name[1:].isdigit():
+            offset = int(name[1:])
+            name = long_names[offset:long_names.index(b"/\n", offset)].decode("utf-8", "replace")
+        members.append((name.rstrip("/"), body))
+    return members
+
+
+def summarize_wasm_archive(path: str, data: bytes) -> Dict[str, Any]:
+    """Summarize a static library of WebAssembly objects (a wasm RID's name.a).
+
+    Args:
+        path: The archive, for the report.
+        data: Its bytes.
+
+    Returns:
+        The same shape as summarize_archive: kind="archive", members (name, the global symbols
+        each defines, the ones it references), exports (every defined global), plus
+        format="Wasm" and each member's asmapi records under "asmapi".
+
+    Raises:
+        InspectError: A member is not well-formed WebAssembly.
+    """
+    members = []
+    exports: List[str] = []
+    records: List[str] = []
+    for name, body in _ar_members(data):
+        if not body.startswith(WASM_MAGIC):
+            members.append({"member": name, "defines": [], "references": []})
+            continue
+        member = summarize_wasm(f"{path}({name})", body)
+        symbols = member.get("symbols", [])
+        defines = sorted({s["name"] for s in symbols if s["defined"] and s["binding"] == "Global" and s["name"] and s["kind"] != "section"})
+        references = sorted({s["name"] for s in symbols if not s["defined"] and s["name"]})
+        members.append({"member": name, "defines": defines, "references": references})
+        exports.extend(defines)
+        records.extend(member["asmapi"])
+    return {"file": path, "format": "Wasm", "kind": "archive", "members": members,
+            "exports": sorted(set(exports)), "asmapi": records, "needed": None}
+
+
+def _is_wasm_archive(data: bytes) -> bool:
+    """Whether an ar archive's first real member is a WebAssembly object.
+
+    Args:
+        data: The archive's bytes.
+
+    Returns:
+        True for a wasm RID's static library.
+    """
+    members = _ar_members(data)
+    return bool(members) and members[0][1].startswith(WASM_MAGIC)
+
+
+def is_wasm_file(path: str) -> bool:
+    """Whether a file is WebAssembly (a module, an object, or an archive of objects), which
+    this script reads without llvm-readobj.
+
+    Args:
+        path: The file.
+
+    Returns:
+        True when inspect() would summarize it with summarize_wasm or summarize_wasm_archive.
+
+    Raises:
+        InspectError: The file cannot be read.
+    """
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError as exc:
+        raise InspectError(f"{path}: {exc.strerror or exc}")
+    return data.startswith(WASM_MAGIC) or (data.startswith(b"!<arch>\n") and _is_wasm_archive(data))
+
+
+def inspect(path: str, readobj: Optional[str]) -> Dict[str, Any]:
     """Inspect one file and return its summary, whatever its format.
 
     Args:
         path: File to inspect.
-        readobj: llvm-readobj to run.
+        readobj: llvm-readobj to run; None is allowed for WebAssembly files, which are read in
+            Python.
 
     Returns:
         The summary dictionary (see summarize_elf, summarize_archive, summarize_pe,
-        summarize_macho, summarize_text_archive and summarize_coff_object); every summary
-        has "format": "ELF", "PE" or "MachO".
+        summarize_macho, summarize_text_archive, summarize_coff_object, summarize_wasm and
+        summarize_wasm_archive); every summary has "format": "ELF", "PE", "MachO" or "Wasm".
 
     Raises:
-        InspectError: The file cannot be read or is none of the three formats.
+        InspectError: The file cannot be read or is none of the four formats.
     """
+    if is_wasm_file(path):
+        with open(path, "rb") as f:
+            data = f.read()
+        return summarize_wasm(path, data) if data.startswith(WASM_MAGIC) else summarize_wasm_archive(path, data)
+    if readobj is None:
+        raise InspectError(f"{path}: reading it needs llvm-readobj, which was not found")
     fmt = file_format(readobj, path)
     with open(path, "rb") as f:
         magic = f.read(8)
@@ -679,6 +1051,34 @@ def _format_pe_macho(summary: Dict[str, Any]) -> List[str]:
     return lines
 
 
+def _format_wasm(summary: Dict[str, Any]) -> List[str]:
+    """The report lines of a WebAssembly module, program or object (after the "file:" line).
+
+    Args:
+        summary: A dictionary from summarize_wasm.
+
+    Returns:
+        One fact per line: kind, memory, exports with their kinds, imports, custom sections and
+        the asmapi records.
+    """
+    kinds = {"module": "WebAssembly module", "command": "WASI command (exports _start)",
+             "object": "WebAssembly object (relocatable)"}
+    lines = [f"kind: {kinds.get(summary['kind'], summary['kind'])}"]
+    memory = summary.get("memory")
+    if memory:
+        bound = f"{memory['max_pages']} max" if memory["max_pages"] is not None else "no max"
+        where = "imported" if memory.get("imported") else "defined"
+        lines.append(f"memory: {memory['min_pages']} page(s) of 64 KiB min, {bound}, {where}"
+                     + (", shared" if memory.get("shared") else ""))
+    exports = summary["exports"]
+    lines.append(f"exports ({len(exports)}): " + (", ".join(f"{e['name']} [{e['kind']}]" for e in exports) or "(none)"))
+    lines.append(f"imports ({len(summary['imports'])}): {', '.join(summary['imports']) or '(none)'}")
+    lines.append(f"custom sections: {', '.join(summary['custom_sections']) or '(none)'}")
+    if summary["asmapi"]:
+        lines.append(f"asmapi records ({len(summary['asmapi'])}): " + "; ".join(summary["asmapi"]))
+    return lines
+
+
 def format_text(summary: Dict[str, Any]) -> str:
     """Render one summary as the human-readable report.
 
@@ -696,9 +1096,13 @@ def format_text(summary: Dict[str, Any]) -> str:
         for m in summary["members"]:
             lines.append(f"  {m['member']}: defines {', '.join(m['defines']) or '-'}"
                          + (f"; references {', '.join(m['references'])}" if m["references"] else ""))
+        if summary.get("asmapi"):
+            lines.append(f"asmapi records ({len(summary['asmapi'])}): " + "; ".join(summary["asmapi"]))
         return "\n".join(lines)
     if fmt in ("PE", "MachO"):
         return "\n".join(lines + _format_pe_macho(summary))
+    if fmt == "Wasm":
+        return "\n".join(lines + _format_wasm(summary))
     kinds = {"shared": "shared object (ET_DYN)", "pie": "position-independent executable (ET_DYN, PIE)",
              "static": "static executable (ET_EXEC)", "object": "relocatable object (ET_REL)"}
     lines.append(f"kind: {kinds.get(summary['kind'], summary['kind'])}")
@@ -764,6 +1168,11 @@ def check_expectations(summary: Dict[str, Any], args: argparse.Namespace) -> Lis
         failures.append(f"{name}: expected RUNPATH '{args.expect_runpath}', found {summary.get('runpath') or '(none)'}")
     if args.expect_nonexec_stack and summary.get("executable_stack") is not False:
         failures.append(f"{name}: expected a non-executable stack, found {summary.get('executable_stack')}")
+    for imported in getattr(args, "expect_import", None) or []:
+        if summary.get("format") != "Wasm":
+            failures.append(f"{name}: --expect-import applies to WebAssembly only, not {summary.get('format', 'ELF')}")
+        elif imported not in summary.get("imports", []):
+            failures.append(f"{name}: expected import '{imported}', found {summary.get('imports') or '(none)'}")
     return failures
 
 
@@ -776,22 +1185,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     Returns:
         The process exit code: 0, EXIT_EXPECTATION_FAILED or EXIT_TOOL_ERROR.
     """
-    parser = argparse.ArgumentParser(description="Summarize AsmSdk outputs (ELF, PE, Mach-O) and check expectations.")
+    parser = argparse.ArgumentParser(description="Summarize AsmSdk outputs (ELF, PE, Mach-O, WebAssembly) and check expectations.")
     parser.add_argument("files", nargs="+", help="libraries, programs, objects or static archives of any RID")
     parser.add_argument("--json", action="store_true", help="print the summaries as JSON")
     parser.add_argument("--readobj", help="path of llvm-readobj (default: bundled toolchain, then PATH)")
-    parser.add_argument("--expect-type", choices=["shared", "pie", "static", "object", "archive", "dll", "exe", "dylib", "executable"],
-                        help="ELF: shared, pie, static; PE: dll, exe; Mach-O: dylib, executable; any: object, archive")
+    parser.add_argument("--expect-type", choices=["shared", "pie", "static", "object", "archive", "dll", "exe", "dylib", "executable", "module", "command"],
+                        help="ELF: shared, pie, static; PE: dll, exe; Mach-O: dylib, executable; WebAssembly: module, command; any: object, archive")
     parser.add_argument("--expect-export", action="append", metavar="NAME", help="a symbol that must be exported, by its C name (repeatable)")
     parser.add_argument("--expect-needed", action="append", metavar="LIB",
                         help="a needed library: ELF DT_NEEDED, PE imported DLL, Mach-O dylib (repeatable)")
     parser.add_argument("--expect-no-needed", action="store_true", help="no needed libraries at all (a Linux freestanding output)")
     parser.add_argument("--expect-runpath", metavar="VALUE", help="a RUNPATH entry that must exist, e.g. '$ORIGIN'")
+    parser.add_argument("--expect-import", action="append", metavar="MODULE.NAME",
+                        help="WebAssembly: an import that must exist, e.g. wasi_snapshot_preview1.fd_write (repeatable)")
     parser.add_argument("--expect-nonexec-stack", action="store_true",
                         help="ELF: PT_GNU_STACK without PF_X; PE: NX_COMPAT (DEP); Mach-O: no MH_ALLOW_STACK_EXECUTION")
     args = parser.parse_args(argv)
     try:
-        readobj = find_readobj(args.readobj)
+        # WebAssembly files are read in Python; llvm-readobj is looked for only when another
+        # format is among the inputs, so wasm outputs can be checked on a machine without it.
+        readobj = None if all(is_wasm_file(path) for path in args.files) else find_readobj(args.readobj)
         summaries = [inspect(path, readobj) for path in args.files]
     except InspectError as exc:
         print(f"inspect_output: {exc}", file=sys.stderr)

@@ -21,6 +21,10 @@ Usage:
                    [--sln PATH.slnx] [--package-id ID] [--version 1.0.0] [--sdk-version 0.3.0]
                    [--root DIR]
 
+WebAssembly (the SDK release after 0.3.0): --rids browser-wasm;wasi-wasm writes name.wasm.s
+(LLVM's WebAssembly assembly through asmsdk-wasm.inc); an exe for wasi-wasm writes main.wasi.s,
+a WASI command.
+
 Exit codes: 0 = done (some files may have been kept); 2 = usage error or a file could not be
 written or parsed.
 """
@@ -50,6 +54,13 @@ ALL_RIDS = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64"
 
 #: The RIDs a freestanding program can have: macOS supports no static executables (ASM0015).
 FREESTANDING_EXE_RIDS = [r for r in ALL_RIDS if not r.startswith("osx-")]
+
+#: The WebAssembly RIDs of the SDK release after 0.3.0 (0.3.0 stops them with ASM0011). Never a
+#: default: a project lists them only when --rids asks, since they need that newer SDK.
+WASM_RIDS = ["browser-wasm", "wasi-wasm"]
+
+#: Every RID --rids accepts, in the SDK's order.
+KNOWN_RIDS = ALL_RIDS + WASM_RIDS
 
 #: NASM's .note.GNU-stack line, Linux-only: macho64 stops on it ("unknown section name").
 NOTE_GNU_STACK = "%ifdef LINUX\nsection .note.GNU-stack noalloc noexec nowrite progbits\n%endif\n"
@@ -94,10 +105,10 @@ def parse_rids(text: str) -> List[str]:
         ScaffoldError: A RID is not one AsmSdk builds (the build would stop with ASM0011).
     """
     rids = [r.strip().lower() for r in re.split(r"[;,]", text) if r.strip()]
-    unknown = [r for r in rids if r not in ALL_RIDS]
+    unknown = [r for r in rids if r not in KNOWN_RIDS]
     if unknown:
-        raise ScaffoldError(f"--rids: {', '.join(unknown)} is not a RID AsmSdk builds; use {', '.join(ALL_RIDS)}")
-    return [r for r in ALL_RIDS if r in rids]
+        raise ScaffoldError(f"--rids: {', '.join(unknown)} is not a RID AsmSdk builds; use {', '.join(KNOWN_RIDS)}")
+    return [r for r in KNOWN_RIDS if r in rids]
 
 
 def default_rids(kind: str, framework: str) -> List[str]:
@@ -113,22 +124,37 @@ def default_rids(kind: str, framework: str) -> List[str]:
     return FREESTANDING_EXE_RIDS if kind == "exe" and framework == "freestanding" else list(ALL_RIDS)
 
 
-def output_names(kind: str, name: str) -> str:
+def output_names(kind: str, name: str, rids: Optional[List[str]] = None) -> str:
     """Name a project's outputs per OS, for the project file's comment.
 
     Args:
         kind: One of KIND_TO_OUTPUT_TYPE's keys.
         name: The AssemblyName.
+        rids: The project's RIDs; None or no WebAssembly RID means the native names only.
 
     Returns:
-        A short list such as "name.dll, libname.so, libname.dylib".
+        A short list such as "name.dll, libname.so, libname.dylib", with WebAssembly's names
+        (no lib prefix: name.wasm and name.a) when a wasm RID is listed, and only those when
+        every RID is WebAssembly.
     """
-    return {
+    native = {
         "library": f"{name}.dll, lib{name}.so, lib{name}.dylib",
         "static": f"{name}.lib, lib{name}.a",
         "exe": f"{name}.exe, {name}",
         "objects": "objects only, in obj/",
     }[kind]
+    wasm = {
+        "library": f"{name}.wasm (the module) and {name}.a",
+        "static": f"{name}.a",
+        "exe": f"{name}.wasm (a WASI command)",
+        "objects": "objects only, in obj/",
+    }[kind]
+    rids = rids or []
+    if not any(r in WASM_RIDS for r in rids):
+        return native
+    if all(r in WASM_RIDS for r in rids):
+        return wasm
+    return f"{native}; WebAssembly: {wasm}"
 
 
 def asmproj_text(kind: str, framework: str, rids: List[str], assembly_name: Optional[str],
@@ -156,7 +182,7 @@ def asmproj_text(kind: str, framework: str, rids: List[str], assembly_name: Opti
         props.append("    <TargetFramework>libc</TargetFramework>   <!-- the platform's C library: glibc or musl, libSystem, the UCRT -->")
     props.append(f"    <RuntimeIdentifiers>{';'.join(rids)}</RuntimeIdentifiers>   <!-- one build each: bin/<Configuration>/{framework}/<rid>/ -->")
     if assembly_name:
-        props.append(f"    <AssemblyName>{assembly_name}</AssemblyName>   <!-- {output_names(kind, assembly_name)} -->")
+        props.append(f"    <AssemblyName>{assembly_name}</AssemblyName>   <!-- {output_names(kind, assembly_name, rids)} -->")
     if package_id and kind == "library":
         # A packed shared library also ships a static library, so asm consumers (and Linux
         # freestanding executables, which link -static) can link it without a run-time dependency.
@@ -347,6 +373,84 @@ def arm64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
         f"    ret\nENDFUNCTION {prefix}_version\n\n" + NOTE_GNU_STACK_GNU)
 
 
+def wasm_source(kind: str, framework: str, prefix: str, with_proto: bool = True) -> Tuple[str, str]:
+    """The WebAssembly starter for browser-wasm and wasi-wasm, through asmsdk-wasm.inc (llvm-mc).
+
+    Written for the SDK release after 0.3.0: LLVM's WebAssembly assembly, a stack machine whose
+    functions declare their type, with a PROTO line per export so the C# bindings come from it.
+    It avoids the measured traps: no assembler constant (llvm-mc's wasm writer crashes on any),
+    ENDDATA after every data label, ENDFUNCTION after every function, PROTO before its FUNCTION,
+    and .p2align 2 before the data WASI is handed.
+
+    Args:
+        kind: One of KIND_TO_OUTPUT_TYPE's keys ("exe" is a WASI command; scaffold() refuses an
+            exe for browser-wasm).
+        framework: The TargetFramework; a libc library or program is refused by scaffold()
+            (ASM0016), a libc static library or objects get the same freestanding code.
+        prefix: Symbol prefix (see symbol_prefix).
+        with_proto: Whether the library's functions get PROTO lines. False when the project
+            also builds native RIDs: the SDK requires the same PROTO lines in every RID's source
+            (ASM0133, "one API for every RID"), and the native starters carry none, because
+            0.3.0, which they are written for, has no PROTO.
+
+    Returns:
+        (file name, text): {prefix}.wasm.s with {prefix}_add and {prefix}_version, or
+        main.wasi.s with _start writing a line through WASI's fd_write.
+    """
+    if kind == "exe":
+        return "main.wasi.s", (
+            "// main.wasi.s - wasi-wasm: a WASI command (wasmtime, or dotnet run -r wasi-wasm). WASI is\n"
+            "// imported, not called with syscall: fd_write prints, proc_exit ends the program.\n"
+            "IMPORT_FUNCTION wasi_snapshot_preview1, fd_write, (i32, i32, i32, i32) -> (i32)\n"
+            "IMPORT_FUNCTION wasi_snapshot_preview1, proc_exit, (i32) -> ()\n\n"
+            "FUNCTION _start, () -> ()\n"
+            "    i32.const 1                 // standard output\n"
+            "    ADDRESS iov                 // one iovec: { message, length }\n"
+            "    i32.const 1\n"
+            "    ADDRESS written             // where fd_write stores the byte count\n"
+            "    CALL fd_write\n"
+            "    drop                        // the errno\n"
+            "    i32.const 0                 // exit status 0\n"
+            "    CALL proc_exit\n"
+            "ENDFUNCTION _start\n\n"
+            "    DATA\n"
+            "    .p2align 2                  // WASI refuses misaligned pointers (wasmtime)\n"
+            "iov:\n"
+            "    .int message\n"
+            "    .int .Lmessage_end - message\n"
+            "ENDDATA iov\n"
+            "written:\n"
+            "    .int 0\n"
+            "ENDDATA written\n\n"
+            "    RODATA\n"
+            "message:\n"
+            "    .ascii \"hello from WebAssembly\\n\"\n"
+            ".Lmessage_end:\n"
+            "ENDDATA message\n")
+    # With native RIDs beside it, a PROTO line here and none in the .asm/.s would be ASM0133:
+    # the note says how to add them everywhere at once instead.
+    proto_add = f"PROTO int32_t {prefix}_add(int32_t a, int32_t b)\n" if with_proto else ""
+    proto_version = f"PROTO int32_t {prefix}_version(void)\n" if with_proto else ""
+    note = ("" if with_proto else
+            "// C# bindings: add a PROTO line before each FUNCTION here AND in every native source of this\n"
+            "// project (the same lines: ASM0133 compares the RIDs), e.g. PROTO int32_t " + prefix + "_add(int32_t a, int32_t b)\n\n")
+    return f"{prefix}.wasm.s", (
+        f"// {prefix}.wasm.s - browser-wasm and wasi-wasm: the same exports as the native sources, in\n"
+        f"// LLVM's WebAssembly assembly. A stack machine: parameters are locals 0..n-1, and the result\n"
+        f"// is what the function leaves on the operand stack. No .set/.equ constants: llvm-mc's wasm\n"
+        f"// writer crashes on them, so numbers are written where they are used.\n\n"
+        + note + proto_add +
+        f"FUNCTION {prefix}_add, (i32, i32) -> (i32)\n"
+        f"    local.get 0\n"
+        f"    local.get 1\n"
+        f"    i32.add\n"
+        f"ENDFUNCTION {prefix}_add\n\n"
+        + proto_version +
+        f"FUNCTION {prefix}_version, () -> (i32)\n"
+        f"    i32.const 0x10000           // {prefix.upper()}_VERSION: 1.0 as major << 16 | minor\n"
+        f"ENDFUNCTION {prefix}_version\n")
+
+
 def write_new(path: str, text: str, report: List[str]) -> None:
     """Write a file only if it does not exist yet.
 
@@ -515,11 +619,21 @@ def scaffold(args: argparse.Namespace) -> List[str]:
     if args.kind == "exe" and args.framework == "freestanding" and any(r.startswith("osx-") for r in rids):
         raise ScaffoldError("a freestanding program cannot target macOS (ASM0015: Apple supports no static executables); "
                             "use --framework libc, or drop the osx RIDs")
+    wasm = [r for r in rids if r in WASM_RIDS]
+    if args.kind == "exe" and "browser-wasm" in wasm:
+        raise ScaffoldError("a program cannot target browser-wasm (ASM0017: the browser starts no program); "
+                            "make a library for the browser, or the program for wasi-wasm")
+    if args.framework == "libc" and wasm and args.kind in ("library", "exe"):
+        raise ScaffoldError("a libc WebAssembly module or WASI program does not build (ASM0016: the bundled wasm-ld links "
+                            "no C library); use --framework freestanding, or --kind static for a .NET WebAssembly app")
+    if args.kind == "exe" and wasm and any(r not in WASM_RIDS for r in rids):
+        raise ScaffoldError("a WASI program and a native program differ in everything but their name: scaffold them as two "
+                            "projects (--rids wasi-wasm, and the native RIDs)")
     report: List[str] = []
     project_file = os.path.join(project_dir, f"{name}.asmproj")
     write_new(project_file, asmproj_text(args.kind, args.framework, rids, args.assembly_name, args.package_id, args.version), report)
     prefix = symbol_prefix(args.assembly_name or name)
-    if args.kind != "exe":
+    if args.kind != "exe" and any(r not in WASM_RIDS for r in rids):
         # Public include files live in include/: ProjectReference consumers get it on their -I
         # path, and dotnet pack ships it (a project without include/ packs no include files).
         second = f"{prefix}_length" if args.framework == "libc" else f"{prefix}_version"
@@ -532,6 +646,14 @@ def scaffold(args: argparse.Namespace) -> List[str]:
     if any(r.endswith("-arm64") for r in rids):
         file_name, source = arm64_source(args.kind, args.framework, prefix)
         write_new(os.path.join(project_dir, file_name), source, report)
+    if wasm:
+        # WebAssembly needs a source qualified for it (no unqualified file builds wasm: ASM0023).
+        file_name, source = wasm_source(args.kind, args.framework, prefix,
+                                        with_proto=all(r in WASM_RIDS for r in rids))
+        write_new(os.path.join(project_dir, file_name), source, report)
+        if args.sdk_version == "0.3.0":
+            report.append("manual   WebAssembly needs an AsmFoundation.Sdk after 0.3.0, which stops a wasm RID with "
+                          "ASM0011: pass --sdk-version with a later release (or a build of AsmSdk's main from a local feed)")
     ensure_global_json(project_dir, os.path.abspath(args.root), args.sdk_version, report)
     if args.sln:
         ensure_in_slnx(os.path.abspath(args.sln), project_file, report)
@@ -553,8 +675,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--kind", choices=sorted(KIND_TO_OUTPUT_TYPE), default="library")
     parser.add_argument("--framework", choices=["freestanding", "libc"], default="freestanding",
                         help="the TargetFramework: freestanding (no C library) or libc (the platform's C library)")
-    parser.add_argument("--rids", help="RuntimeIdentifiers, ';' or ',' separated (default: every RID the kind can build: "
-                                       "all seven, or all but osx for a freestanding program)")
+    parser.add_argument("--rids", help="RuntimeIdentifiers, ';' or ',' separated (default: every native RID the kind can build: "
+                                       "all seven, or all but osx for a freestanding program); browser-wasm and wasi-wasm "
+                                       "(the SDK release after 0.3.0) only when named")
     parser.add_argument("--assembly-name", help="AssemblyName: name.dll / libname.so / libname.dylib, or the program's name")
     parser.add_argument("--sln", help="a .slnx to create or add the project to (a .sln gets instructions)")
     parser.add_argument("--package-id", help="make the project packable with this PackageId")
@@ -566,8 +689,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.error("--version needs --package-id")
     if args.framework == "libc" and args.kind in ("static", "objects"):
         print("note: TargetFramework=libc links nothing into a static library or objects, but it records that "
-              "the code needs the C library: a freestanding project cannot reference it (NU1201). The starter "
-              "source calls strlen.", file=sys.stderr)
+              "the code needs the C library: a freestanding project cannot reference it (NU1201). The native "
+              "starter sources call strlen (the WebAssembly one calls nothing).", file=sys.stderr)
     try:
         report = scaffold(args)
     except ScaffoldError as exc:
