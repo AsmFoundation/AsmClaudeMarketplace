@@ -44,6 +44,13 @@ Merged when AsmFoundation.Sdk's next release ships WebAssembly (the owner's choi
     build in the feed.
   - **Tests:** 29 (wasm fixtures for every new check, the wasm scaffolds lint clean, the
     inspector on a real WASI command and archive).
+  - **Follows AsmSdk's round of 2026-11-25** (the owner's choices for the problems found on the
+    way): ASM0054's fix by the app's shape, since SDK 11.0.100's `wasm-tools-net10` built and
+    ran a `Microsoft.NET.Sdk.WebAssembly` app with asm code and stopped only the
+    `Microsoft.NET.Sdk` + `browser-wasm` shape (the earlier text said every `net10.0` browser
+    app); the SDK's `WasmDebugLevel` default for browser builds (`0` in Release, `-1` in Debug);
+    and `ASM0055`, the warning for a build that sets `RunAOTCompilation`. In
+    `references/webassembly.md` and the `SKILL.md` footgun rows.
 
 ## 2026-11-21
 

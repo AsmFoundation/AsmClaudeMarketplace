@@ -183,23 +183,36 @@ internal static partial int add_ints(int a, int b);
   linked the same way; nothing is copied, a wasm app deploys no native file.
 - **The app needs .NET's native wasm build for its own .NET version:** `wasm-tools` (browser) or
   `wasi-experimental` + WASI SDK 25.0 in `WASI_SDK_PATH` (WASI, .NET 10), on the SDK of that
-  .NET: a `net10.0` app needs a .NET 10 SDK (`global.json`). Not SDK 11's `wasm-tools-net10`
-  (*verified*: SDK 11.0.100 with it stopped every `net10.0` browser app in .NET's own targets,
-  even one with no asm code), and SDK 11's WASI build serves only `net11.0`. Without the
-  workload .NET would build plain IL without the asm code, so the SDK stops with **ASM0054**.
-  In CI, install the .NET 10 SDK into a folder of the runner's own (`DOTNET_INSTALL_DIR`):
-  GitHub's Windows images default to SDK 11.0.100.
+  .NET. On a later SDK it depends on how the app is made (*verified* with SDK 11.0.100 and
+  `wasm-tools-net10`):
+  - `Microsoft.NET.Sdk.WebAssembly` (`wasmbrowser`, Blazor WebAssembly): builds and runs with
+    `dotnet workload install wasm-tools-net10`, asm code included;
+  - `Microsoft.NET.Sdk` + `RuntimeIdentifier` `browser-wasm` (`wasmconsole`, `asmwasmapp`,
+    `Crc32C.Browser`): .NET's own targets stopped every `net10.0` one, even with no asm code
+    ("WasmAssembliesToBundle item is empty"), so it needs a .NET 10 SDK (`global.json`);
+  - WASI: SDK 11's WASI build serves only `net11.0`, so a .NET 10 SDK.
+  Without the workload .NET would build plain IL without the asm code, so the SDK stops with
+  **ASM0054**, whose fix follows the app's shape. In CI, for the last two, install the .NET 10
+  SDK into a folder of the runner's own (`DOTNET_INSTALL_DIR`): GitHub's Windows images default
+  to SDK 11.0.100.
 - `dotnet run` of a browser console app goes through `WasmAppHost`, which needs a
   `runtimeconfig.template.json`:
   `{ "wasmHostProperties": { "perHostConfig": [ { "name": "node", "js-path": "main.mjs", "host": "nodejs" } ] } }`
   (else "no perHostConfigs found").
-- **Timing asm against C# in a browser:** a *build* bundle says `debugLevel: -1`, and in Chromium
-  and Firefox .NET then runs with its debugger on: the interpreter stays unoptimized and the
-  jiterpreter compiles nothing (*verified*: C# 5-7 MB/s with 0 traces, 134 MB/s with
-  `debugLevel: 0`, in headless Chrome). Measure a publish, or set `<WasmDebugLevel>0</WasmDebugLevel>`.
-  Node never enables the debugger and hides this.
+- **Debug level (after 0.3.0, the SDK's default):** .NET writes `debugLevel: -1` into every
+  browser *build*, and in Chromium and Firefox its runtime then runs the debugger: the
+  interpreter stays unoptimized and the jiterpreter compiles nothing (*verified*: C# 5-7 MB/s
+  with 0 traces, 134 MB/s with `debugLevel: 0`, in headless Chrome; Node never enables the
+  debugger and hides this). The SDK sets `WasmDebugLevel` for the build of a browser app that
+  links asm code, by project reference or package: `0` in Release, `-1` in Debug; the app's own
+  value wins, other configurations and every publish keep .NET's (*verified*: 128-158 MB/s with
+  the default, 11.6-12.2 MB/s with `-p:WasmDebugLevel=-1`). So time a Release build or a
+  publish, never a Debug build. On 0.3.0 itself, set `<WasmDebugLevel Condition="'$(Configuration)' == 'Release'">0</WasmDebugLevel>`.
 - AOT (`RunAOTCompilation=true`) happens at `dotnet publish` only; a build with it still
-  interprets.
+  interprets (*verified*: a byte-identical `dotnet.native.wasm`), and after 0.3.0 says so:
+  **ASM0055** (warning). Time a publish; `<NoWarn>$(NoWarn);ASM0055</NoWarn>` when the property
+  is there for the publishes (Blazor). Never suggest `RunAOTCompilationAfterBuild` to silence
+  it: it compiled all 174 untrimmed assemblies (~5 min), then .NET's `llvm-size` failed (MSB3073).
 
 ### JavaScript, Node, WASI hosts
 
@@ -263,7 +276,8 @@ instance.exports.add_ints(40, 2);   // 42; memory is instance.exports.memory
 | ASM0021 | `.asm` qualified for wasm | `.wasm.s` |
 | ASM0023 | wasm RID, no qualified source | `name.wasm.s`, or drop the RID |
 | ASM0030 | pattern in a module's `ExportsFile` | exact names |
-| ASM0054 | .NET wasm app without the native build of its .NET | the workload it names, on the SDK of the app's .NET (a .NET 10 SDK for `net10.0`, never SDK 11's `wasm-tools-net10`) |
+| ASM0054 | .NET wasm app without the native build of its .NET | the workload it names: on the app's own SDK `wasm-tools`/`wasi-experimental`; on a later SDK `wasm-tools-net10` for a `Microsoft.NET.Sdk.WebAssembly` app, a .NET 10 SDK (`global.json`) for a `Microsoft.NET.Sdk` browser app or a WASI app |
+| ASM0055 (warning) | a *build* of a browser app with `RunAOTCompilation=true`: it interprets | time a `dotnet publish`; `NoWarn` it when the property is for publishes |
 | ASM0131 / ASM0132 / ASM0133 | PROTO for no exported function / wrong wasm type / RIDs disagree | see PROTO above |
 | `error: PROTO and the function macros go between functions` | PROTO or FUNCTION inside a body | move it above the `FUNCTION`; close with `ENDFUNCTION` |
 | `no perHostConfigs found` | `dotnet run` of a browser app without the runtimeconfig template | add it |
