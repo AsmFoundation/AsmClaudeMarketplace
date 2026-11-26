@@ -13,14 +13,24 @@ tutorial.
 1. [A source file skeleton](#a-source-file-skeleton)
 2. [Position-independent code](#position-independent-code)
 3. [Symbols: export, hide, size](#symbols-export-hide-size)
-4. [Sections and data](#sections-and-data)
-5. [Includes and macros](#includes-and-macros)
-6. [Calling conventions](#calling-conventions)
-7. [Linux system calls](#linux-system-calls)
-8. [Warnings worth knowing](#warnings-worth-knowing)
-9. [Templates](#templates)
+4. [PROTO: a function's C prototype](#proto-a-functions-c-prototype)
+5. [STRUCT: a struct for the asm code and for C#](#struct-a-struct-for-the-asm-code-and-for-c)
+6. [Sections and data](#sections-and-data)
+7. [Includes and macros](#includes-and-macros)
+8. [Calling conventions](#calling-conventions)
+9. [Linux system calls](#linux-system-calls)
+10. [Warnings worth knowing](#warnings-worth-knowing)
+11. [Templates](#templates)
 
 ## A source file skeleton
+
+> [!NOTE]
+> `ImplicitUsings` (on by default in an `.asmproj`) puts `%include "asmsdk.inc"`,
+> `default rel`, on Linux the `.note.GNU-stack` section, and then `section .text` in front of
+> every source, through NASM's pre-include. A source in an AsmSdk project then needs none of
+> those lines below, though writing them changes nothing. They still matter in a project with
+> `<ImplicitUsings>disable</ImplicitUsings>`, and in a file assembled outside AsmSdk, so the
+> skeleton keeps them and the reasons follow. See [Projects](projects.md#implicitusings).
 
 ```nasm
 ; crc.asm - one public function; see include/crc.inc for its contract.
@@ -57,6 +67,22 @@ section .note.GNU-stack noalloc noexec nowrite progbits
 - **`asmsdk.inc`** gives the OS's calling convention and export rules names (see
   [Platforms](platforms.md#x64-asmsdkinc)): `FUNCTION` declares and exports, `ARG1d` is `ecx`
   on Windows and `edi` elsewhere.
+- **`section .text`** comes before the first label, even though NASM puts code there anyway.
+  On Windows the directive matters: NASM's COFF output writes a label defined before the
+  first section directive as an *undefined* symbol, though its code lands in `.text`
+  (measured with NASM 2.16.03, 3.01 and 3.02; ELF and Mach-O are not affected). The object
+  assembles and archives without a word, and the link fails: `undefined symbol: main`. A
+  `FUNCTION` in a DLL happens to escape, because its export directive switches back with
+  `__SECT__`, which is `[section .text]`. A `HIDDEN_FUNCTION`, a program's `main` and a
+  `FUNCTION` of a project with an `ExportsFile` (which writes no directive) do not, and
+  neither does a `LOCAL_FUNCTION` that another section points to (`dq helper` in `.data`:
+  `undefined symbol: helper`).
+  `asmsdk.inc`'s function macros therefore start with NASM's `__SECT__`, the section the
+  source last named with a `section` line, `[section .text]` while it named none. A source
+  that includes `asmsdk.inc` links without the line too, with `ImplicitUsings` or without. The
+  line still matters for raw NASM. One change of meaning from 0.3.0: after the bracket form
+  `[section .foo]`, which does not redefine `__SECT__`, a function goes back to the last
+  `section` line's section, so write code sections with `section .foo`.
 - **`.note.GNU-stack`** marks the object as not needing an executable stack. It is
   Linux-only: for macOS, NASM stops at the line (`unknown section name`). The SDK already
   links with `-z noexecstack`, but your `.a` may be linked by someone else's toolchain. Since
@@ -152,7 +178,7 @@ hash_seed: dq 0x9E3779B97F4A7C15
 
 Measured with one such source built for linux-x64, win-x64 and osx-x64: none of the three
 libraries exports `hash_seed`. With a plain `global` in the macOS branch, `libHash.dylib`
-exports it. [`check_asmproj.py`](../scripts/check_asmproj.py) reports a symbol
+exports it. [`check_asmproj.py`](https://asmfoundation.github.io/AsmSdk/scripts/check_asmproj.py) reports a symbol
 that is internal on one OS and exported on another (`ASMSRC022`).
 
 On ELF (Linux-only files), the directives also give sizes and data types:
@@ -178,6 +204,92 @@ On ELF (Linux-only files), the directives also give sizes and data types:
   static library's internals with `HIDDEN_FUNCTION` or `LOCAL_FUNCTION`. On Linux,
   `--exclude-libs ALL` in the `.so` also works (see
   [Runtimes and linking](runtimes-and-linking.md#production-link-options)).
+
+## PROTO: a function's C prototype
+
+The first step of the generated C# bindings, and of the C header. A `PROTO` line beside a
+`FUNCTION` declares its C signature:
+
+```nasm
+PROTO int32_t add_ints(int32_t a, int32_t b)
+FUNCTION add_ints, 2
+    lea     eax, [ARG1 + ARG2]
+    RETURN
+ENDFUNCTION
+
+PROTO fast uint32_t sum_bytes(const uint8_t* data, size_t len)
+```
+
+- **The types:** `void`, `bool`, `char`, the fixed-width integers (`int8_t` ... `uint64_t`,
+  `size_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t`), `float`, `double`, pointers to them, and
+  function pointers (`int32_t (*op)(int32_t, int32_t)`). Not `int` or `long`: `long` is 32-bit
+  on Windows and 64-bit elsewhere.
+- **`fast`** marks a short function that never blocks, whose binding may skip the GC
+  transition (3.38 ns per call instead of 9.60 ns, measured).
+- **What the SDK does with it:** `PROTO` and every function macro write a record into a
+  metadata section of the object. After assembling each RID, the SDK checks every `PROTO`
+  against that RID's functions and writes `<AssemblyName>.api.json` beside the RID's library;
+  the RID outer build checks that every RID agrees and writes the library's file in
+  `bin/<Configuration>/<tfm>/`. The section never reaches a Windows or macOS image, and is not
+  loaded from a Linux `.so`.
+- **What the lines give:** C# bindings to every C# project that references the library (see
+  [Generated bindings](interop.md#generated-bindings)), and a C header, `<AssemblyName>.h`,
+  beside the API file and in the package's `include/` (see
+  [C and other languages](interop.md#c-and-other-languages)).
+- **The checks:** `ASM0130` (a line that does not parse, or a type it cannot bind),
+  `ASM0131` (no exported `FUNCTION` of that name; a static library may describe a
+  `HIDDEN_FUNCTION`), `ASM0132` (the integer and pointer parameters differ from `FUNCTION`'s
+  count), `ASM0133` (two RIDs declare a function differently), `ASM0134` (two `PROTO` lines for
+  one function). The message points at the `PROTO` line.
+- **Structs:** a `PROTO` takes a pointer to a `STRUCT` (`const rect* r`), never a struct by
+  value: each platform passes one its own way.
+
+## STRUCT: a struct for the asm code and for C#
+
+With the generated C# bindings and the C header, a `STRUCT` line declares a struct, laid out
+as C lays it out on the RID, with fields written as C declarations:
+
+```nasm
+STRUCT point, int32_t x, int32_t y
+STRUCT rect, point min, point max, uint32_t flags
+
+PROTO int32_t rect_area(const rect* r)
+FUNCTION rect_area, 1
+    mov     eax, [ARG1 + rect.max + point.x]     ; offsets: rect.max is 8, point.x 0
+    sub     eax, [ARG1 + rect.min + point.x]
+    mov     r8d, [ARG1 + rect.max + point.y]
+    sub     r8d, [ARG1 + rect.min + point.y]
+    imul    eax, r8d
+    RETURN
+ENDFUNCTION
+```
+
+- **The constants:** `name.field` (each field's offset) and `name_size` (the size, padding
+  included), the names NASM's own `struc` gives. They are preprocessor numbers (`%assign`), so
+  they also work in `%if` and `times`. Nothing lands in the object's symbol table.
+- **The fields:**
+  - the fixed-width integers, `bool`, `char`, `float` and `double`;
+  - pointers (`const uint8_t* data`), including to the struct itself (`node* next`);
+  - function pointers (`int32_t (*cmp)(int32_t, int32_t)`);
+  - a `STRUCT` declared before, by value (`point min`);
+  - arrays of the scalars (`uint32_t h[8]`).
+
+  Arrays of pointers or of structs are refused: C#'s fixed buffers hold primitive types only.
+- **How it works:** the SDK reads the `STRUCT` lines of each source, and of the files it
+  includes, before assembling. It computes the layout once, in C#, and gives the source its
+  constants as a pre-include. Each source gets the structs it declares or includes, as in C. The
+  `STRUCT` macro records the line for the API file, where the RIDs are compared (`ASM0133`), and
+  each C# consumer's baseline gets a sequential C# struct from it (see
+  [Generated bindings](interop.md#generated-bindings)).
+- **Footguns:**
+  - `%if` does not hide a `STRUCT` line from the SDK.
+  - A `STRUCT` written by another macro is an error at its expansion ("STRUCT made was not read
+    by the SDK"): the SDK reads the source's text, and a macro's body is not assembled where it
+    is written.
+  - Includes are found where NASM finds them: the project folder, then the include folders, not
+    the including file's folder.
+- **The checks:** `ASM0130` (a line that does not parse, or a refused field), `ASM0136` (one
+  struct declared twice, differently), at the line, before anything is assembled.
 
 ## Sections and data
 

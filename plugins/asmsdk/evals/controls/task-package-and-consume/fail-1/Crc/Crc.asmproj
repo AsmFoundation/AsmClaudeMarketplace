@@ -1,4 +1,6 @@
 <Project Sdk="AsmFoundation.Sdk">
+  <!-- Negative control: crc.inc sits in the project folder, not include/, so dotnet pack ships no
+       include file and the tool's %include "crc.inc" fails to assemble. -->
   <PropertyGroup>
     <OutputType>StaticLibrary</OutputType>
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>

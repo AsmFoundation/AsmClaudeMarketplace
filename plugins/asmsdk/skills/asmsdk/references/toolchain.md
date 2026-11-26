@@ -1,4 +1,4 @@
-# The toolchain: AsmFoundation.Sdk 0.3.0
+# The toolchain: AsmFoundation.Sdk 0.4.0
 
 AsmSdk builds with four tools: two assemblers, NASM for x64 code and LLVM's `llvm-mc` for
 GNU-syntax code (ARM64), a linker (`lld`, which links ELF, PE/COFF and Mach-O) and an archiver
@@ -14,7 +14,7 @@ build machine needs.
 | [`AsmFoundation.Toolchain.linux-arm64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.linux-arm64) | Linux ARM64 (glibc) |
 | [`AsmFoundation.Toolchain.osx-arm64`](https://www.nuget.org/packages/AsmFoundation.Toolchain.osx-arm64) | macOS on Apple silicon |
 
-Every package builds the same outputs, for all seven runtime identifiers: Windows, Linux
+Every package builds the same outputs, for all ten runtime identifiers (WebAssembly's two among them): Windows, Linux
 (glibc and musl) and macOS, on x64 and ARM64. A team can mix Windows, Linux and macOS
 machines.
 
@@ -38,7 +38,8 @@ machines.
   NuGet extracts the package into the global packages folder: `~/.nuget/packages`, or
   `$NUGET_PACKAGES` when set.
 - **`AsmToolchainVersion` defaults to the version the SDK release was tested with:** `0.1.0`
-  for SDK 0.1.0 and 0.2.0, and `0.2.0` for SDK 0.3.0, which needs its `llvm-mc`. Toolchain
+  for SDK 0.1.0 and 0.2.0, and `0.2.0` for SDK 0.3.0, which needs its `llvm-mc`, and for SDK
+  0.4.0, whose WebAssembly builds use the same `llvm-mc` and lld. Toolchain
   packages carry their own version, so a new SDK release does not download unchanged tools
   again.
 - **A `PackageDownload` is not a dependency.** Packages built from your projects do not list

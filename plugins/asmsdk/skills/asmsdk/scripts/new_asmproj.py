@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Scaffold an AsmSdk (.asmproj) project that builds every RID it lists on the first `dotnet build`.
 
-Why this exists: a working AsmFoundation.Sdk 0.3.0 project needs several pieces that are easy
-to get subtly wrong by hand - global.json's msbuild-sdks entry, RuntimeIdentifiers (required:
-a project that names none stops with ASM0010), the .slnx type GUID, a public include/ folder
-(or packages ship no include files), and sources that assemble and link on every OS: NASM for
-the x64 RIDs through asmsdk.inc (FUNCTION, ARG1.., SHADOW_SPACE, PLT, the .note.GNU-stack
-section only on Linux), GNU syntax for the ARM64 RIDs through asmsdk-gnu.inc (FUNCTION, CALL,
-ADDRESS, RODATA), a 16-byte aligned stack before calls, and C library calls that need no
-variadic arguments (Apple's ARM64 passes those on the stack). This script writes all of them
-consistently for the chosen output kind, target framework (freestanding or libc) and RIDs.
+Why this exists: a working AsmFoundation.Sdk 0.4.0 project needs several pieces that are easy
+to get subtly wrong by hand - global.json's msbuild-sdks entry, RuntimeIdentifiers (without
+them a project builds the build machine's RID alone, and a pack warns ASM0013), the .slnx type
+GUID, a public include/ folder (or packages ship no include files), PROTO lines that agree on
+every RID (or the C# bindings stop with ASM0133), and sources that assemble and link on every
+OS: NASM for the x64 RIDs, whose platform layer (asmsdk.inc: FUNCTION, ARG1.., SHADOW_SPACE,
+PLT; default rel; the Linux-only .note.GNU-stack section) ImplicitUsings puts in front of each
+file, GNU syntax for the ARM64 RIDs (asmsdk-gnu.inc: FUNCTION, CALL, ADDRESS, RODATA), a 16-byte
+aligned stack before calls, and C library calls that need no variadic arguments (Apple's ARM64
+passes those on the stack). This script writes all of them consistently for the chosen output
+kind, target framework (freestanding or libc) and RIDs.
 
 Safety: it never overwrites an existing file. Existing files are reported as "kept". The only
 files it edits in place are global.json (adding the msbuild-sdks entry when missing) and the
@@ -18,12 +20,12 @@ files it edits in place are global.json (adding the msbuild-sdks entry when miss
 Usage:
     new_asmproj.py <project-dir> [--name NAME] [--kind library|static|exe|objects]
                    [--framework freestanding|libc] [--rids RID;RID...] [--assembly-name NAME]
-                   [--sln PATH.slnx] [--package-id ID] [--version 1.0.0] [--sdk-version 0.3.0]
+                   [--sln PATH.slnx] [--package-id ID] [--version 1.0.0] [--sdk-version 0.4.0]
                    [--root DIR]
 
-WebAssembly (the SDK release after 0.3.0): --rids browser-wasm;wasi-wasm writes name.wasm.s
-(LLVM's WebAssembly assembly through asmsdk-wasm.inc); an exe for wasi-wasm writes main.wasi.s,
-a WASI command.
+WebAssembly (AsmFoundation.Sdk 0.4.0 and later): --rids browser-wasm;wasi-wasm writes
+name.wasm.s (LLVM's WebAssembly assembly through asmsdk-wasm.inc); an exe for wasi-wasm writes
+main.wasi.s, a WASI command.
 
 Exit codes: 0 = done (some files may have been kept); 2 = usage error or a file could not be
 written or parsed.
@@ -40,7 +42,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
 #: SDK version the skill documents; global.json gets it unless --sdk-version says otherwise.
-DEFAULT_SDK_VERSION = "0.3.0"
+DEFAULT_SDK_VERSION = "0.4.0"
 
 #: The generic MSBuild ("Common Project System") project type. An .asmproj entry in a .slnx
 #: without it fails with "MSB4025 ... ProjectType '' not found".
@@ -49,24 +51,58 @@ ASMPROJ_TYPE_GUID = "13B669BE-BB05-4DDF-9536-439F39A36129"
 #: Output kinds accepted by --kind, mapped to the csproj-style OutputType the SDK reads.
 KIND_TO_OUTPUT_TYPE = {"library": "Library", "static": "StaticLibrary", "exe": "Exe", "objects": "Objects"}
 
-#: Every RID AsmFoundation.Sdk 0.3.0 builds, in the order the SDK lists them.
-ALL_RIDS = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "osx-x64", "osx-arm64"]
+#: Every native RID AsmFoundation.Sdk 0.4.0 builds, in the order the SDK lists them.
+ALL_RIDS = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64"]
 
 #: The RIDs a freestanding program can have: macOS supports no static executables (ASM0015).
 FREESTANDING_EXE_RIDS = [r for r in ALL_RIDS if not r.startswith("osx-")]
 
-#: The WebAssembly RIDs of the SDK release after 0.3.0 (0.3.0 stops them with ASM0011). Never a
-#: default: a project lists them only when --rids asks, since they need that newer SDK.
+#: The WebAssembly RIDs, since AsmFoundation.Sdk 0.4.0 (0.3.0 stops them with ASM0011). Never a
+#: default: a project lists them only when --rids asks, since their code is another language.
 WASM_RIDS = ["browser-wasm", "wasi-wasm"]
 
 #: Every RID --rids accepts, in the SDK's order.
 KNOWN_RIDS = ALL_RIDS + WASM_RIDS
 
-#: NASM's .note.GNU-stack line, Linux-only: macho64 stops on it ("unknown section name").
-NOTE_GNU_STACK = "%ifdef LINUX\nsection .note.GNU-stack noalloc noexec nowrite progbits\n%endif\n"
+#: The line every starter source opens with: ImplicitUsings (on by default since 0.4.0) puts the
+#: platform layer in front of the file, so the starters write no %include, no default rel and no
+#: .note.GNU-stack section (which only Linux takes: macho64 stops on it).
+IMPLICIT_NASM = "; The SDK puts its platform layer in front of this file (ImplicitUsings, on by default).\n"
 
 #: The same for llvm-mc's GNU syntax.
-NOTE_GNU_STACK_GNU = '.ifdef LINUX\n.section .note.GNU-stack,"",%progbits\n.endif\n'
+IMPLICIT_GNU = "// The SDK puts its platform layer in front of this file (ImplicitUsings, on by default).\n"
+
+
+def api_protos(kind: str, framework: str, prefix: str, rids: List[str]) -> Dict[str, str]:
+    """The PROTO line of each exported function, when the project's API is one for every RID.
+
+    A library or static library with PROTO lines gets C# bindings and a C header from them, and
+    the SDK compares every RID's lines (ASM0133: one API for every RID). The native libc
+    starters export {prefix}_length (strlen), which the WebAssembly starter cannot (no C
+    library there), so a libc project that also lists a wasm RID gets no PROTO lines: one RID
+    would declare a function another lacks.
+
+    Args:
+        kind: One of KIND_TO_OUTPUT_TYPE's keys; programs and objects get none.
+        framework: "freestanding" or "libc".
+        prefix: Symbol prefix (see symbol_prefix).
+        rids: The project's RIDs.
+
+    Returns:
+        Function name -> its PROTO line (without a newline); empty when none apply.
+    """
+    if kind not in ("library", "static"):
+        return {}
+    has_wasm = any(r in WASM_RIDS for r in rids)
+    has_native = any(r not in WASM_RIDS for r in rids)
+    if framework == "libc" and has_wasm and has_native:
+        return {}
+    protos = {f"{prefix}_add": f"PROTO int32_t {prefix}_add(int32_t a, int32_t b)"}
+    if framework == "libc" and has_native:
+        protos[f"{prefix}_length"] = f"PROTO size_t {prefix}_length(const char* s)"
+    else:
+        protos[f"{prefix}_version"] = f"PROTO int32_t {prefix}_version(void)"
+    return protos
 
 
 class ScaffoldError(Exception):
@@ -119,7 +155,7 @@ def default_rids(kind: str, framework: str) -> List[str]:
         framework: "freestanding" or "libc".
 
     Returns:
-        All seven RIDs, except for a freestanding program, which macOS cannot have.
+        All eight native RIDs, except for a freestanding program, which macOS cannot have.
     """
     return FREESTANDING_EXE_RIDS if kind == "exe" and framework == "freestanding" else list(ALL_RIDS)
 
@@ -161,8 +197,9 @@ def asmproj_text(kind: str, framework: str, rids: List[str], assembly_name: Opti
                  package_id: Optional[str], version: Optional[str]) -> str:
     """Build the .asmproj XML for the requested kind, target framework, RIDs and packaging.
 
-    Only properties that differ from the SDK defaults are written, plus RuntimeIdentifiers,
-    which 0.3.0 requires; comments say what each produces.
+    Only properties that differ from the SDK defaults are written, plus RuntimeIdentifiers:
+    without them a project builds the build machine's RID alone (and dotnet pack warns
+    ASM0013), so a new project lists what it ships. Comments say what each produces.
 
     Args:
         kind: One of KIND_TO_OUTPUT_TYPE's keys.
@@ -213,19 +250,21 @@ def include_text(prefix: str, functions: List[str]) -> str:
             f"%ifndef {prefix.upper()}_IMPLEMENTATION\n{externs}%endif\n\n%endif\n")
 
 
-def x64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
-    """The NASM starter for the x64 RIDs, through asmsdk.inc so one file serves every OS.
+def x64_source(kind: str, framework: str, prefix: str, protos: Optional[Dict[str, str]] = None) -> Tuple[str, str]:
+    """The NASM starter for the x64 RIDs: asmsdk.inc's macros, so one file serves every OS.
 
     Args:
         kind: One of KIND_TO_OUTPUT_TYPE's keys.
         framework: The TargetFramework, "freestanding" or "libc".
         prefix: Symbol prefix (see symbol_prefix).
+        protos: The PROTO line of each export (see api_protos), written above its FUNCTION.
 
     Returns:
         (file name, text). Libraries export two functions; programs start at _start
         (freestanding: system calls on Linux, kernel32 on Windows) or main (libc).
     """
-    head = "default rel\n%include \"asmsdk.inc\"               ; FUNCTION, ARG1.., SHADOW_SPACE, PLT for this RID's OS\n"
+    protos = protos or {}
+    head = IMPLICIT_NASM
     if kind == "exe" and framework == "libc":
         return "main.asm", (
             "; main.asm - the x64 RIDs: int main(void), called by the SDK's startup code (Linux,\n"
@@ -238,7 +277,7 @@ def x64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
             "    call    puts PLT                ; the C library: through the PLT on Linux\n"
             "    xor     eax, eax                ; return 0\n"
             "    add     rsp, SHADOW_SPACE + 8\n"
-            "    RETURN\nENDFUNCTION\n\n" + NOTE_GNU_STACK)
+            "    RETURN\nENDFUNCTION\n")
     if kind == "exe":
         return "main.asm", (
             "; main.asm - the x64 RIDs: a program without a C library. Linux: system calls. Windows:\n"
@@ -271,31 +310,31 @@ def x64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
             "    mov     eax, 231                ; exit_group\n"
             "    xor     edi, edi                ; status 0\n"
             "    syscall\n"
-            "ENDFUNCTION\n%endif\n\n" + NOTE_GNU_STACK)
+            "ENDFUNCTION\n%endif\n")
     function = f"{prefix}_add"
     implementation = f"%define {prefix.upper()}_IMPLEMENTATION\n%include \"{prefix}.inc\"\n"
-    add = (f"; int {function}(int a, int b)\nFUNCTION {function}, 2\n"
+    add = (f"; int {function}(int a, int b)\n" + proto_line(protos, function) + f"FUNCTION {function}, 2\n"
            f"    lea     eax, [ARG1 + ARG2]      ; ecx + edx on Windows, edi + esi elsewhere\n"
            f"    RETURN\nENDFUNCTION\n\n")
     if framework == "libc":
         return f"{prefix}.asm", (
             f"; {prefix}.asm - the x64 RIDs: {prefix}_add, and {prefix}_length through the platform's C library.\n"
             + head + implementation + "extern strlen\n\nsection .text\n\n" + add
-            + f"; size_t {prefix}_length(const char *s)\nFUNCTION {prefix}_length, 1\n"
+            + f"; size_t {prefix}_length(const char *s)\n" + proto_line(protos, f"{prefix}_length") + f"FUNCTION {prefix}_length, 1\n"
             f"    sub     rsp, SHADOW_SPACE + 8   ; align the call, plus Windows' shadow space; ARG1 passes through\n"
             f"    call    strlen PLT              ; another library: through the PLT on Linux\n"
             f"    add     rsp, SHADOW_SPACE + 8\n"
-            f"    RETURN\nENDFUNCTION\n\n" + NOTE_GNU_STACK)
+            f"    RETURN\nENDFUNCTION\n")
     return f"{prefix}.asm", (
         f"; {prefix}.asm - the x64 RIDs: position-independent, so it links into a shared library, a PIE\n"
         f"; or a static program on every OS.\n"
         + head + implementation + "\nsection .text\n\n" + add
-        + f"; int {prefix}_version(void)\nFUNCTION {prefix}_version\n"
-        f"    mov     eax, {prefix.upper()}_VERSION\n    RETURN\nENDFUNCTION\n\n" + NOTE_GNU_STACK)
+        + f"; int {prefix}_version(void)\n" + proto_line(protos, f"{prefix}_version") + f"FUNCTION {prefix}_version\n"
+        f"    mov     eax, {prefix.upper()}_VERSION\n    RETURN\nENDFUNCTION\n")
 
 
-def arm64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
-    """The GNU-syntax starter for the ARM64 RIDs, through asmsdk-gnu.inc (llvm-mc).
+def arm64_source(kind: str, framework: str, prefix: str, protos: Optional[Dict[str, str]] = None) -> Tuple[str, str]:
+    """The GNU-syntax starter for the ARM64 RIDs: asmsdk-gnu.inc's macros (llvm-mc).
 
     AAPCS64 is the same calling convention on Linux, Windows and macOS (x0-x7, the result in
     x0), so only names, exports and addressing differ, which the macros handle.
@@ -304,11 +343,13 @@ def arm64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
         kind: One of KIND_TO_OUTPUT_TYPE's keys.
         framework: The TargetFramework, "freestanding" or "libc".
         prefix: Symbol prefix (see symbol_prefix).
+        protos: The PROTO line of each export (see api_protos): the same lines as x64_source's.
 
     Returns:
         (file name, text), the same functions or entry point as x64_source.
     """
-    head = ".include \"asmsdk-gnu.inc\"          // FUNCTION, CALL, ADDRESS, RODATA for this RID's OS\n"
+    protos = protos or {}
+    head = IMPLICIT_GNU
     if kind == "exe" and framework == "libc":
         return "main.s", (
             "// main.s - the ARM64 RIDs: int main(void). puts takes one fixed argument: Apple's ARM64\n"
@@ -321,7 +362,7 @@ def arm64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
             "    CALL    puts\n"
             "    mov     w0, #0                  // return 0\n"
             "    ldp     x29, x30, [sp], #16\n"
-            "    ret\nENDFUNCTION main\n\n" + NOTE_GNU_STACK_GNU)
+            "    ret\nENDFUNCTION main\n")
     if kind == "exe":
         return "main.s", (
             "// main.s - the ARM64 RIDs: a program without a C library. Linux: system calls (the generic\n"
@@ -352,31 +393,44 @@ def arm64_source(kind: str, framework: str, prefix: str) -> Tuple[str, str]:
             "    mov     x8, #94                 // exit_group\n"
             "    svc     #0\n"
             "ENDFUNCTION _start\n"
-            ".endif\n\n" + NOTE_GNU_STACK_GNU)
-    add = (f"// int {prefix}_add(int a, int b)\nFUNCTION {prefix}_add\n    add     w0, w0, w1\n    ret\n"
-           f"ENDFUNCTION {prefix}_add\n\n")
+            ".endif\n")
+    add = (f"// int {prefix}_add(int a, int b)\n" + proto_line(protos, f"{prefix}_add")
+           + f"FUNCTION {prefix}_add\n    add     w0, w0, w1\n    ret\nENDFUNCTION {prefix}_add\n\n")
     if framework == "libc":
         return f"{prefix}.s", (
             f"// {prefix}.s - the ARM64 RIDs: {prefix}_add, and {prefix}_length through the platform's C library.\n"
             + head + "\n" + add
-            + f"// size_t {prefix}_length(const char *s)\nFUNCTION {prefix}_length\n"
+            + f"// size_t {prefix}_length(const char *s)\n" + proto_line(protos, f"{prefix}_length") + f"FUNCTION {prefix}_length\n"
             f"    stp     x29, x30, [sp, #-16]!   // a call: keep the frame and the return address\n"
             f"    mov     x29, sp\n"
             f"    CALL    strlen                  // x0 passes through\n"
             f"    ldp     x29, x30, [sp], #16\n"
-            f"    ret\nENDFUNCTION {prefix}_length\n\n" + NOTE_GNU_STACK_GNU)
+            f"    ret\nENDFUNCTION {prefix}_length\n")
     return f"{prefix}.s", (
         f"// {prefix}.s - the ARM64 RIDs, in GNU syntax for llvm-mc: the same exports as {prefix}.asm.\n"
         + head + "\n" + add
-        + f"// int {prefix}_version(void)\nFUNCTION {prefix}_version\n"
+        + f"// int {prefix}_version(void)\n" + proto_line(protos, f"{prefix}_version") + f"FUNCTION {prefix}_version\n"
         f"    mov     w0, #0x10000            // {prefix.upper()}_VERSION: 1.0 as major << 16 | minor\n"
-        f"    ret\nENDFUNCTION {prefix}_version\n\n" + NOTE_GNU_STACK_GNU)
+        f"    ret\nENDFUNCTION {prefix}_version\n")
+
+
+def proto_line(protos: Dict[str, str], function: str) -> str:
+    """The PROTO line written above a function's FUNCTION, or nothing when the project has none.
+
+    Args:
+        protos: Function name -> PROTO line (see api_protos).
+        function: The exported function.
+
+    Returns:
+        The line with its newline, or "".
+    """
+    return protos[function] + "\n" if function in protos else ""
 
 
 def wasm_source(kind: str, framework: str, prefix: str, with_proto: bool = True) -> Tuple[str, str]:
     """The WebAssembly starter for browser-wasm and wasi-wasm, through asmsdk-wasm.inc (llvm-mc).
 
-    Written for the SDK release after 0.3.0: LLVM's WebAssembly assembly, a stack machine whose
+    LLVM's WebAssembly assembly (AsmFoundation.Sdk 0.4.0 and later), a stack machine whose
     functions declare their type, with a PROTO line per export so the C# bindings come from it.
     It avoids the measured traps: no assembler constant (llvm-mc's wasm writer crashes on any),
     ENDDATA after every data label, ENDFUNCTION after every function, PROTO before its FUNCTION,
@@ -388,10 +442,10 @@ def wasm_source(kind: str, framework: str, prefix: str, with_proto: bool = True)
         framework: The TargetFramework; a libc library or program is refused by scaffold()
             (ASM0016), a libc static library or objects get the same freestanding code.
         prefix: Symbol prefix (see symbol_prefix).
-        with_proto: Whether the library's functions get PROTO lines. False when the project
-            also builds native RIDs: the SDK requires the same PROTO lines in every RID's source
-            (ASM0133, "one API for every RID"), and the native starters carry none, because
-            0.3.0, which they are written for, has no PROTO.
+        with_proto: Whether the library's functions get PROTO lines (see api_protos). False
+            when the native starters export another API (a libc project's strlen wrapper): the
+            SDK requires the same PROTO lines in every RID's source (ASM0133, "one API for every
+            RID").
 
     Returns:
         (file name, text): {prefix}.wasm.s with {prefix}_add and {prefix}_version, or
@@ -427,8 +481,8 @@ def wasm_source(kind: str, framework: str, prefix: str, with_proto: bool = True)
             "    .ascii \"hello from WebAssembly\\n\"\n"
             ".Lmessage_end:\n"
             "ENDDATA message\n")
-    # With native RIDs beside it, a PROTO line here and none in the .asm/.s would be ASM0133:
-    # the note says how to add them everywhere at once instead.
+    # A PROTO line here and none in the .asm/.s would be ASM0133: the note says how to add
+    # them everywhere at once instead.
     proto_add = f"PROTO int32_t {prefix}_add(int32_t a, int32_t b)\n" if with_proto else ""
     proto_version = f"PROTO int32_t {prefix}_version(void)\n" if with_proto else ""
     note = ("" if with_proto else
@@ -562,11 +616,12 @@ def ensure_in_slnx(slnx: str, project_file: str, report: List[str]) -> None:
     rel = os.path.relpath(project_file, os.path.dirname(os.path.abspath(slnx)) or ".").replace("\\", "/")
     line = f'  <Project Path="{rel}" Type="{ASMPROJ_TYPE_GUID}" />'
     if slnx.lower().endswith(".sln"):
-        # Verified with the .NET 10 SDK: `dotnet sln add` refuses .asmproj ("unknown project
-        # type"), and an .sln entry without ProjectConfigurationPlatforms lines is silently
-        # skipped by the build, so a half-written entry would be worse than none.
-        report.append(f"manual   {slnx}: dotnet sln add refuses .asmproj; add Project(\"{{{ASMPROJ_TYPE_GUID}}}\") = ... "
-                      f"plus its ProjectConfigurationPlatforms lines (without them the build skips it), or use a .slnx")
+        # The script does not edit a classic .sln: an entry needs a project GUID and
+        # ProjectConfigurationPlatforms lines (without them the build silently skips the
+        # project), which the .NET CLI writes itself. Since AsmFoundation.Sdk 0.4.0 it takes an
+        # .asmproj (the SDK names its type, DefaultProjectTypeGuid); 0.3.0 and older were refused.
+        report.append(f"manual   {slnx}: run dotnet sln \"{slnx}\" add \"{project_file}\" (AsmFoundation.Sdk 0.4.0 or later: "
+                      f"the CLI writes the entry and its configuration lines), or use a .slnx")
         return
     if not os.path.exists(slnx):
         write_new(slnx, f"<Solution>\n{line}\n</Solution>\n", report)
@@ -640,20 +695,22 @@ def scaffold(args: argparse.Namespace) -> List[str]:
         write_new(os.path.join(project_dir, "include", f"{prefix}.inc"), include_text(prefix, [f"{prefix}_add", second]), report)
     # NASM builds the x64 RIDs, llvm-mc's GNU syntax the ARM64 ones (ASM0023 for a RID no
     # source builds), so each CPU in the list gets its file.
+    # One API for every RID: the same PROTO lines in each source, or none (see api_protos).
+    protos = api_protos(args.kind, args.framework, prefix, rids)
     if any(r.endswith("-x64") for r in rids):
-        file_name, source = x64_source(args.kind, args.framework, prefix)
+        file_name, source = x64_source(args.kind, args.framework, prefix, protos)
         write_new(os.path.join(project_dir, file_name), source, report)
     if any(r.endswith("-arm64") for r in rids):
-        file_name, source = arm64_source(args.kind, args.framework, prefix)
+        file_name, source = arm64_source(args.kind, args.framework, prefix, protos)
         write_new(os.path.join(project_dir, file_name), source, report)
     if wasm:
         # WebAssembly needs a source qualified for it (no unqualified file builds wasm: ASM0023).
         file_name, source = wasm_source(args.kind, args.framework, prefix,
-                                        with_proto=all(r in WASM_RIDS for r in rids))
+                                        with_proto=bool(protos) or all(r in WASM_RIDS for r in rids))
         write_new(os.path.join(project_dir, file_name), source, report)
-        if args.sdk_version == "0.3.0":
-            report.append("manual   WebAssembly needs an AsmFoundation.Sdk after 0.3.0, which stops a wasm RID with "
-                          "ASM0011: pass --sdk-version with a later release (or a build of AsmSdk's main from a local feed)")
+        if args.sdk_version in ("0.1.0", "0.2.0", "0.3.0"):
+            report.append(f"manual   WebAssembly needs AsmFoundation.Sdk 0.4.0 or later ({args.sdk_version} stops a wasm RID "
+                          "with ASM0011): pass --sdk-version 0.4.0")
     ensure_global_json(project_dir, os.path.abspath(args.root), args.sdk_version, report)
     if args.sln:
         ensure_in_slnx(os.path.abspath(args.sln), project_file, report)
@@ -676,8 +733,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--framework", choices=["freestanding", "libc"], default="freestanding",
                         help="the TargetFramework: freestanding (no C library) or libc (the platform's C library)")
     parser.add_argument("--rids", help="RuntimeIdentifiers, ';' or ',' separated (default: every native RID the kind can build: "
-                                       "all seven, or all but osx for a freestanding program); browser-wasm and wasi-wasm "
-                                       "(the SDK release after 0.3.0) only when named")
+                                       "all eight, or all but osx for a freestanding program); browser-wasm and wasi-wasm "
+                                       "only when named")
     parser.add_argument("--assembly-name", help="AssemblyName: name.dll / libname.so / libname.dylib, or the program's name")
     parser.add_argument("--sln", help="a .slnx to create or add the project to (a .sln gets instructions)")
     parser.add_argument("--package-id", help="make the project packable with this PackageId")

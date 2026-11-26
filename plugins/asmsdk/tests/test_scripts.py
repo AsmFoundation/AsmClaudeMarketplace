@@ -1,7 +1,8 @@
 """Tests for the asmsdk skill's scripts (check_asmproj.py, new_asmproj.py, inspect_output.py).
 
-Why these tests: the scripts encode facts measured against AsmFoundation.Sdk 0.3.0, NASM 3.02
-and LLVM 23.1.5 (llvm-mc, lld, llvm-readobj). Each linter check gets a fixture that must
+Why these tests: the scripts encode facts measured against AsmFoundation.Sdk 0.4.0 (and, for
+a project that pins it, 0.3.0, whose rules the root fixture tree keeps), NASM 3.02 and LLVM
+23.1.5 (llvm-mc, lld, llvm-readobj). Each linter check gets a fixture that must
 trigger it (so a regression in a check is caught) and a clean project that must not (so false
 errors are caught); the 0.3.0 checks also get fixtures for each platform rule (what macOS's
 and Windows' NASM output rejects, the RID rules, the source selection). The fixtures are
@@ -9,8 +10,9 @@ generated into a temporary folder from the dictionaries below, which keeps them 
 to the assertions. No .NET SDK, NASM or LLVM is needed: inspect_output.py is tested on canned
 llvm-readobj output (JSON for ELF, text for PE and Mach-O) and on two small WebAssembly files
 built with a main build of AsmSdk (a WASI command and a library's archive, embedded below),
-and the per-OS C library lists on a fake SDK package folder. The WebAssembly fixtures (the SDK
-release after 0.3.0) live under wasm/, whose global.json pins a later version.
+and the per-OS C library lists on a fake SDK package folder. The WebAssembly fixtures live
+under wasm/, and the fixtures of 0.4.0's own rules (ImplicitUsings, the renamed items, the
+build machine's RID as the default) under v040/; both have a global.json that pins 0.4.0.
 
 Run: python -m unittest discover -s plugins/asmsdk/tests   (Python 3.8+, standard library only)
 """
@@ -138,8 +140,8 @@ def proj(props: str = "", items: str = "", rids: Optional[str] = "linux-x64") ->
     Args:
         props: XML placed inside the PropertyGroup.
         items: XML placed inside the ItemGroup.
-        rids: RuntimeIdentifiers to declare (0.3.0 requires them); None for a project that
-            names none.
+        rids: RuntimeIdentifiers to declare (0.3.0 requires them; 0.4.0 builds the build
+            machine's RID without them); None for a project that names none.
 
     Returns:
         The project file's text.
@@ -316,9 +318,41 @@ FIXTURES: Dict[str, str] = {
                          "de_table: dq 1\n%ifdef LINUX\n" + NOTE + "%endif\n"),
     # A solution entry without the type GUID.
     "Bad.slnx": '<Solution>\n  <Project Path="good/Good.asmproj" />\n</Solution>\n',
-    # WebAssembly with the 0.3.0 the root global.json pins: nuget.org's 0.3.0 stops it (ASM0011).
+    # WebAssembly with the 0.3.0 the root global.json pins: 0.3.0 stops it (ASM0011).
     "wasm030/Wasm030.asmproj": proj(rids="browser-wasm"),
     "wasm030/a.wasm.s": WASM_FN.format(n="w030"),
+    # --- 0.4.0's own rules: their own global.json pins 0.4.0. ---
+    "v040/global.json": '{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.4.0" } }\n',
+    # ImplicitUsings (on by default): no %include, default rel or note in the source, a memory
+    # operand without `rel`, every OS, a shared library: clean, the SDK writes those lines.
+    "v040/implicit/Implicit.asmproj": proj('<AssemblyName>implicit</AssemblyName>', rids="win-x64;linux-x64;osx-x64"),
+    "v040/implicit/implicit.asm": ("section .rodata\ntable: dd 1, 2, 3\n\nsection .text\n"
+                                   "FUNCTION impl_get, 1\n    lea     rax, [table]\n    mov     eax, [rax]\n    RETURN\nENDFUNCTION\n"),
+    # An explicit `default abs` wins over ImplicitUsings' default rel: absolute addressing again.
+    "v040/abs/Abs.asmproj": proj(rids="linux-x64"),
+    "v040/abs/abs.asm": ("default abs\nsection .rodata\ntable: dd 1\n\nsection .text\n"
+                         "FUNCTION abs_get\n    mov     eax, [table]\n    RETURN\nENDFUNCTION\n"),
+    # ImplicitUsings disabled: raw NASM, so the missing default rel is the build's failure.
+    "v040/raw/Raw.asmproj": proj("<ImplicitUsings>disable</ImplicitUsings>", rids="linux-x64"),
+    "v040/raw/raw.asm": ('%include "asmsdk.inc"\nsection .rodata\ntable: dd 1\n\nsection .text\n'
+                         "FUNCTION raw_get\n    mov     eax, [table]\n    RETURN\nENDFUNCTION\n"),
+    # 0.3.0's names on 0.4.0: one ASMPRJ024 each (the build stops with ASM0109-ASM0112).
+    # One item per line: the linter reports one finding per code, file and line.
+    "v040/renamed/Renamed.asmproj": proj("<EnableDefaultAsmItems>true</EnableDefaultAsmItems>",
+                                         '\n    <AsmInclude Include="extra/*.inc" />\n    <AsmLinkLibrary Include="libz.a" />\n  '),
+    "v040/renamed/renamed.asm": "section .text\nFUNCTION renamed_fn\n    RETURN\nENDFUNCTION\n",
+    # No RuntimeIdentifiers, packable: 0.4.0 builds the build machine's RID, and the pack warns
+    # ASM0013 that it ships that one alone (a warning here; info for a project not packed).
+    "v040/norid/NoRid.asmproj": proj("<PackageId>Acme.NoRid</PackageId>", rids=None),
+    "v040/norid/norid.asm": "section .text\nFUNCTION norid_fn\n    RETURN\nENDFUNCTION\n",
+    # The eighth native RID, served by the ARM64 source like the other ARM64 RIDs.
+    "v040/musl/Musl.asmproj": proj(rids="linux-musl-x64;linux-musl-arm64"),
+    "v040/musl/musl.asm": "section .text\nFUNCTION musl_fn\n    RETURN\nENDFUNCTION\n",
+    "v040/musl/musl.s": "FUNCTION musl_fn\n    ret\nENDFUNCTION musl_fn\n",
+    # Compile Remove takes an %include'd .asm out of the sources (0.3.0: AsmSource Remove).
+    "v040/removed/Removed.asmproj": proj(items='<Compile Remove="helpers.asm" />'),
+    "v040/removed/main.asm": '%include "helpers.asm"\nsection .text\nFUNCTION removed_fn\n    call    helper\n    RETURN\nENDFUNCTION\n',
+    "v040/removed/helpers.asm": "helper:\n    ret\n",
     # --- WebAssembly, the release after 0.3.0: its own global.json pins a later version. ---
     "wasm/global.json": '{ "msbuild-sdks": { "AsmFoundation.Sdk": "0.4.0" } }\n',
     "wasm/good/Good.asmproj": proj(rids="browser-wasm;wasi-wasm"),
@@ -427,8 +461,15 @@ EXPECTED: Dict[str, Set[str]] = {
     "guardedlate/GuardedLate.asmproj": {"ASMSRC013"},
     "dataexport/DataExport.asmproj": {"ASMSRC021"},
     "Bad.slnx": {"ASMSLN002"},
-    # ASMPRJ019 is info (a main build in a local feed is also 0.3.0): asserted in its own test.
-    "wasm030/Wasm030.asmproj": set(),
+    # 0.3.0 has no WebAssembly: an error (also asserted with its severity in its own test).
+    "wasm030/Wasm030.asmproj": {"ASMPRJ019"},
+    "v040/implicit/Implicit.asmproj": set(),
+    "v040/abs/Abs.asmproj": {"ASMPIC001"},
+    "v040/raw/Raw.asmproj": {"ASMPIC001"},
+    "v040/renamed/Renamed.asmproj": {"ASMPRJ024"},
+    "v040/norid/NoRid.asmproj": {"ASMPRJ015"},
+    "v040/musl/Musl.asmproj": set(),
+    "v040/removed/Removed.asmproj": set(),
     "wasm/good/Good.asmproj": set(),
     "wasm/mixed/Mixed.asmproj": set(),
     "wasm/const/Const.asmproj": {"ASMWASM001"},
@@ -538,13 +579,45 @@ class CheckAsmprojTests(unittest.TestCase):
                     has_error = any(f["severity"] == "error" for f in own)
                     self.assertEqual(1 if has_error else 0, code)
 
-    def test_wasm_with_sdk_030_is_an_info(self) -> None:
-        """A wasm RID with 0.3.0 pinned is reported (nuget.org's 0.3.0 stops it with ASM0011) as info:
-        a build of AsmSdk's main in a local feed carries the same version and builds it."""
+    def test_wasm_with_sdk_030_is_an_error(self) -> None:
+        """A wasm RID with 0.3.0 pinned is an error: WebAssembly came with 0.4.0, and 0.3.0 stops
+        the build with ASM0011 (before 0.4.0 shipped, a build of AsmSdk's main also said 0.3.0,
+        so this was info)."""
         with nuget_packages(None):
             code, findings = run_json(check_asmproj, [os.path.join(self.tmp.name, "wasm030/Wasm030.asmproj")])
-        self.assertEqual(0, code)
-        self.assertEqual([("info", "ASMPRJ019")], [(f["severity"], f["code"]) for f in findings if f["code"] == "ASMPRJ019"])
+        self.assertEqual(1, code)
+        self.assertEqual([("error", "ASMPRJ019")], [(f["severity"], f["code"]) for f in findings if f["code"] == "ASMPRJ019"])
+
+    def test_renamed_items_name_their_replacement(self) -> None:
+        """Each 0.3.0 name on 0.4.0 is its own error, naming the build's error code and the new
+        line: AsmInclude (ASM0111), AsmLinkLibrary (ASM0109), EnableDefaultAsmItems (ASM0112)."""
+        with nuget_packages(None):
+            _, findings = run_json(check_asmproj, [os.path.join(self.tmp.name, "v040/renamed/Renamed.asmproj")])
+        renamed = sorted((f["message"].split(" ")[0], f["fix"]) for f in findings if f["code"] == "ASMPRJ024")
+        self.assertEqual(["AsmInclude", "AsmLinkLibrary", "EnableDefaultAsmItems"], [name for name, _ in renamed])
+        self.assertIn("None items", renamed[0][1])
+        self.assertIn("NativeLibrary", renamed[1][1])
+        self.assertIn("EnableDefaultCompileItems", renamed[2][1])
+
+    def test_default_rid_warns_a_pack_of_one_rid(self) -> None:
+        """A packable 0.4.0 project without RuntimeIdentifiers builds the build machine's RID: the
+        finding says so and names ASM0013, not 0.3.0's ASM0010."""
+        with nuget_packages(None):
+            _, findings = run_json(check_asmproj, [os.path.join(self.tmp.name, "v040/norid/NoRid.asmproj")])
+        found = [f for f in findings if f["code"] == "ASMPRJ015"]
+        self.assertEqual(1, len(found))
+        self.assertEqual("warning", found[0]["severity"])
+        self.assertIn("ASM0013", found[0]["message"])
+        self.assertNotIn("ASM0010", found[0]["message"])
+
+    def test_implicit_usings_takes_the_note_and_default_rel(self) -> None:
+        """With ImplicitUsings on, a Linux source without .note.GNU-stack gets no ASMSRC006 (the SDK
+        declares it) and a memory operand without rel no ASMPIC001; with it off, both come back."""
+        with nuget_packages(None):
+            _, implicit = run_json(check_asmproj, [os.path.join(self.tmp.name, "v040/implicit/Implicit.asmproj")])
+            _, raw = run_json(check_asmproj, [os.path.join(self.tmp.name, "v040/raw/Raw.asmproj")])
+        self.assertEqual([], [f for f in implicit if f["code"] in ("ASMSRC006", "ASMPIC001")])
+        self.assertEqual({"ASMSRC006", "ASMPIC001"}, {f["code"] for f in raw if f["code"] in ("ASMSRC006", "ASMPIC001")})
 
     def test_wasm_float_operands(self) -> None:
         """Each float operand llvm-mc refuses or rounds is reported on its own line, with the
@@ -726,13 +799,13 @@ class NewAsmprojTests(unittest.TestCase):
                 slnx = f.read()
             self.assertEqual(6, slnx.count(new_asmproj.ASMPROJ_TYPE_GUID))
             with open(os.path.join(tmp, "global.json"), encoding="utf-8") as f:
-                self.assertEqual("0.3.0", json.load(f)["msbuild-sdks"]["AsmFoundation.Sdk"])
+                self.assertEqual(new_asmproj.DEFAULT_SDK_VERSION, json.load(f)["msbuild-sdks"]["AsmFoundation.Sdk"])
             # Every RID by default: an x64 source and an ARM64 one per project.
             self.assertTrue(os.path.isfile(os.path.join(tmp, "Lib", "fastmath.asm")))
             self.assertTrue(os.path.isfile(os.path.join(tmp, "Lib", "fastmath.s")))
             with open(os.path.join(tmp, "App", "App.asmproj"), encoding="utf-8") as f:
                 # A freestanding program cannot target macOS (ASM0015).
-                self.assertIn("<RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64</RuntimeIdentifiers>", f.read())
+                self.assertIn("<RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64</RuntimeIdentifiers>", f.read())
 
     def test_rids_option(self) -> None:
         """--rids sets the list in the SDK's order, and only the CPUs listed get a source."""
@@ -767,16 +840,18 @@ class NewAsmprojTests(unittest.TestCase):
             self.assertEqual([], bad)
             with open(os.path.join(tmp, "Calc", "calc.wasm.s"), encoding="utf-8") as f:
                 self.assertIn("PROTO int32_t calc_add(int32_t a, int32_t b)", f.read())
-            # Beside a native RID the wasm source carries no PROTO: the native starter has none,
-            # and the SDK requires the same lines for every RID (ASM0133).
-            with open(os.path.join(tmp, "Mixed", "mixed.wasm.s"), encoding="utf-8") as f:
-                self.assertNotIn("\nPROTO ", f.read())
+            # Beside a native RID every source carries the same PROTO lines: the SDK requires
+            # one API for every RID (ASM0133), and the C# bindings come from them.
+            for source in ("mixed.wasm.s", "mixed.asm"):
+                with open(os.path.join(tmp, "Mixed", source), encoding="utf-8") as f:
+                    self.assertIn("PROTO int32_t mixed_add(int32_t a, int32_t b)", f.read())
             self.assertTrue(os.path.isfile(os.path.join(tmp, "Mixed", "mixed.asm")))
             self.assertTrue(os.path.isfile(os.path.join(tmp, "Hello", "main.wasi.s")))
             self.assertFalse(os.path.exists(os.path.join(tmp, "Calc", "include")))
 
     def test_wasm_refusals(self) -> None:
-        """A browser program, a libc module and a WASI program beside native RIDs are usage errors; 0.3.0 gets a note."""
+        """A browser program, a libc module and a WASI program beside native RIDs are usage errors; an SDK
+        before 0.4.0 gets a note (it has no WebAssembly)."""
         with tempfile.TemporaryDirectory() as tmp:
             err = io.StringIO()
             with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
@@ -787,7 +862,8 @@ class NewAsmprojTests(unittest.TestCase):
             self.assertIn("ASM0016", err.getvalue())
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                self.assertEqual(0, new_asmproj.main([os.path.join(tmp, "D"), "--rids", "browser-wasm", "--root", tmp]))
+                self.assertEqual(0, new_asmproj.main([os.path.join(tmp, "D"), "--rids", "browser-wasm", "--root", tmp,
+                                                      "--sdk-version", "0.3.0"]))
             self.assertIn("ASM0011", out.getvalue())
 
     def test_never_overwrites(self) -> None:
@@ -816,7 +892,7 @@ class NewAsmprojTests(unittest.TestCase):
             with open(os.path.join(tmp, "global.json"), encoding="utf-8") as f:
                 data = json.load(f)
             self.assertEqual("10.0.100", data["sdk"]["version"])
-            self.assertEqual("0.3.0", data["msbuild-sdks"]["AsmFoundation.Sdk"])
+            self.assertEqual(new_asmproj.DEFAULT_SDK_VERSION, data["msbuild-sdks"]["AsmFoundation.Sdk"])
 
 
 #: llvm-readobj's text style for a PE DLL (abridged from a real AsmSdk win-x64 build).

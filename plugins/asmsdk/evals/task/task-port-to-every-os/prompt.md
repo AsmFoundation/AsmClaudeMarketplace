@@ -5,7 +5,7 @@ allowed_tools: [Read, Glob, Grep, Skill, Write, Edit]
 tags: [task, task-port-to-every-os]
 ---
 
-Our shared library project `Hash/Hash.asmproj` (AsmFoundation.Sdk 0.3.0) was built for linux-x64 only. We added Windows and macOS:
+Our shared library project `Hash/Hash.asmproj` (AsmFoundation.Sdk 0.4.0) was built for linux-x64 only. We added Windows and macOS:
 
 ```xml
 <Project Sdk="AsmFoundation.Sdk">

@@ -27,16 +27,16 @@ wrote. It also holds the controls that prove both judges, and the committed resu
 - a .NET `DllNotFoundException` for SQLite;
 - an ABI register question.
 
-**Task cases** name AsmFoundation.Sdk 0.3.0. They ask for files at fixed paths, so that free
+**Task cases** name AsmFoundation.Sdk 0.4.0. They ask for files at fixed paths, so that free
 graders can read them:
 
 | Case | What it tests |
 |---|---|
 | `task-dotnet-interop` | A new `.slnx` with an asm shared library for linux-x64, win-x64 and osx-x64, and a .NET app that P/Invokes it. It checks: `global.json` msbuild-sdks, the `.slnx` type GUID, `AssemblyName`, `ProjectReference`, the per-OS argument registers, and the `LibraryImport` name `calc`. `libcalc` misses `calc.dll` on Windows. |
-| `task-package-and-consume` | A static library packed as `Acme.Crc` 1.2.0, consumed by version from a folder feed, both for linux-x64. It checks: a public include file in `include/` (otherwise not packed), `PackageReference`, `nuget.config`. 0.3.0's `RuntimeIdentifiers` (`ASM0010` without them) is left to the build check. |
+| `task-package-and-consume` | A static library packed as `Acme.Crc` 1.2.0, consumed by version from a folder feed, both for linux-x64. It checks: a public include file in `include/` (otherwise not packed), `PackageReference`, `nuget.config`. Its wrong control keeps `crc.inc` outside `include/`, so the tool fails to assemble (with 0.3.0 the control was a tool without `RuntimeIdentifiers`, which 0.4.0 builds for the build machine's RID). |
 | `task-defines-keep-debug` | Adding `USE_AVX2=1` to a linux-x64 and win-x64 library without changing Debug and Release. It checks `DefineConstants`, after which the SDK appends `DEBUG`/`RELEASE`, the framework, OS and CPU symbols, and the kept `RuntimeIdentifiers`. 0.1.0's `AsmDefineConstants` dropped `DEBUG`, and is `ASM0102` since 0.2.0. |
-| `task-port-to-every-os` | A Linux-only library whose `win-x64` and `osx-x64` builds fail with the NASM errors that 0.3.0 really prints. Only `hash64` may be exported on each OS. It checks: `FUNCTION` (or `-export:`) for the DLL, `HIDDEN_FUNCTION` or `private_extern` for the internals, `hidden` before the size on Linux, and the argument register per OS. |
-| `task-wasm-library` | A WebAssembly library `Sum` for `browser-wasm` and `wasi-wasm` with `sum_i32` and its PROTO line, for an SDK built from AsmSdk's `main` (the prompt says so). It checks: both RIDs, a source qualified for wasm (`sum.wasm.s`; an unqualified `.s` is ARM64 code), the `FUNCTION` wasm signature, the `PROTO` line, and no assembler constant (llvm-mc's wasm writer crashes on one). |
+| `task-port-to-every-os` | A Linux-only library whose `win-x64` and `osx-x64` builds fail with the NASM errors that 0.3.0 and 0.4.0 really print. Only `hash64` may be exported on each OS. It checks: `FUNCTION` (or `-export:`) for the DLL, `HIDDEN_FUNCTION` or `private_extern` for the internals, `hidden` before the size on Linux, and the argument register per OS. |
+| `task-wasm-library` | A WebAssembly library `Sum` for `browser-wasm` and `wasi-wasm` with `sum_i32` and its PROTO line. It checks: both RIDs, a source qualified for wasm (`sum.wasm.s`; an unqualified `.s` is ARM64 code), the `FUNCTION` wasm signature, the `PROTO` line, and no assembler constant (llvm-mc's wasm writer crashes on one). |
 
 `task-port-to-every-os` replaced 0.2.0's `task-fix-pic-link-errors` in plugin 0.3.0. Since
 0.3.0 links Linux libraries `-Bsymbolic`, the two `R_X86_64_PC32 … recompile with -fPIC`
@@ -45,7 +45,7 @@ internals.
 
 ### build_check.py
 
-**`build_check.py`** copies each kept workspace and builds it with AsmFoundation.Sdk 0.3.0
+**`build_check.py`** copies each kept workspace and builds it with AsmFoundation.Sdk 0.4.0
 and its bundled toolchain:
 
 - **What it builds:** every RID the task names, on whatever OS it runs on. It never builds a
@@ -121,16 +121,16 @@ python evals/build_check.py --result task.json --feed <folder with AsmFoundation
   --nuget-packages <empty folder> --work <scratch folder> --docker --out build-check.json
 ```
 
-- **The feed** holds `AsmFoundation.Sdk.0.3.0.nupkg` and the toolchain package of the
+- **The feed** holds `AsmFoundation.Sdk.0.4.0.nupkg` and the toolchain package of the
   machine that builds (`AsmFoundation.Toolchain.<rid>`). The toolchain package has its own
-  version, 0.2.0 for SDK 0.3.0.
-- **`task-wasm-library` needs a build of AsmSdk's `main`** in the feed (`dotnet pack` there
-  also says 0.3.0): nuget.org's 0.3.0 stops it with ASM0011. Its prompt says so. At the SDK
-  release that ships WebAssembly, every prompt, grader and `SDK_VERSION` move to that version,
-  as they moved to 0.3.0 for plugin 0.3.0, and the prompt's mention of `main` goes.
-  Measured 2026-11-24 with a `main` build (AsmSdk `wasm-complete`): the build check passed
-  `pass-1` (both modules export `sum_i32`, the PROTO record is there, Node prints `-10 0 9`)
-  and failed `fail-1` (ASM0023) and `fail-2` (the llvm-mc crash), as their names say.
+  version, 0.2.0 for SDK 0.3.0 and 0.4.0.
+- **Every prompt, grader and `SDK_VERSION` name 0.4.0**, as they moved to 0.3.0 for plugin
+  0.3.0. Measured 2026-11-26 with the 0.4.0 packages, on Windows x64 without Docker (so no
+  Linux output ran): all 12 controls passed or failed as their names say. `task-wasm-library`
+  `pass-1` exported `sum_i32` from both modules with its PROTO record, and Node printed its
+  sums; `fail-1` stopped with ASM0023 and `fail-2` with llvm-mc's crash. The package task's
+  `fail-1` stopped at the tool's `%include "crc.inc"`. Measured 2026-11-24 with a `main` build,
+  before the release, the wasm controls gave the same verdicts.
 - **Bash is not needed:** the cases grant only Read, Glob, Grep, Skill, Write and Edit.
   This lets the suite run on native Windows, where `claude plugin eval` refuses shell
   grants for lack of a sandbox backend.
@@ -142,8 +142,9 @@ python evals/build_check.py --result task.json --feed <folder with AsmFoundation
 ### 2026-11-17
 
 These results come from plugin 0.1.0 against AsmFoundation.Sdk 0.1.0, with no judge model
-anywhere. Plugin 0.2.0 moved the prompts, graders and build check to 0.2.0, and plugin 0.3.0
-moved them to 0.3.0 and replaced one case. These results were not measured again.
+anywhere. Plugin 0.2.0 moved the prompts, graders and build check to 0.2.0, plugin 0.3.0
+moved them to 0.3.0 and replaced one case, and plugin 0.4.0 moved them to 0.4.0 and added the
+WebAssembly case. These results were not measured again.
 
 | Measure | Result |
 |---|---|

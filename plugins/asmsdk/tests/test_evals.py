@@ -61,13 +61,14 @@ build_check = load_build_check()
 #: The task cases, by folder name.
 CASES = sorted(d for d in os.listdir(TASKS) if os.path.isdir(os.path.join(TASKS, d)))
 
-#: The graders each wrong answer fails; it passes all the others. An empty set means only
-#: build_check.py catches that answer (a Tool project without RuntimeIdentifiers looks right
-#: to every grader and stops with ASM0010), which is why the build check exists.
+#: The graders each wrong answer fails; it passes all the others. An empty set would mean only
+#: build_check.py catches that answer, which is why the build check exists (0.3.0's package
+#: control, a Tool without RuntimeIdentifiers, was one; 0.4.0 builds the machine's RID there).
 FAIL_GRADERS: Dict[Tuple[str, str], Set[str]] = {
     ("task-defines-keep-debug", "fail-1"): {"keeps-debug-defined"},
     ("task-dotnet-interop", "fail-1"): {"pinvoke-library-name", "argument-registers-per-os"},
-    ("task-package-and-consume", "fail-1"): set(),
+    # crc.inc outside include/: the package ships no include file, and the tool fails to assemble.
+    ("task-package-and-consume", "fail-1"): {"include-file-in-include-folder"},
     ("task-port-to-every-os", "fail-1"): {"hash64-exported-everywhere", "mix64-internal-everywhere",
                                           "seed-private-extern-on-macos", "seed-hidden-on-linux",
                                           "argument-register-per-os"},

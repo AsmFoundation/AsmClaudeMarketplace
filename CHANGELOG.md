@@ -4,10 +4,47 @@ Changes to the marketplace and its plugins. Each plugin carries its own version 
 `plugin.json`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased (branch `asmsdk-wasm`)
+## 2026-11-26
 
-Merged when AsmFoundation.Sdk's next release ships WebAssembly (the owner's choice of
-2026-11-24: "on a branch, merged with the SDK's release"); `main` is what users install.
+Released with AsmFoundation.Sdk 0.4.0, which ships WebAssembly: the `asmsdk-wasm` branch is
+merged now, as the owner chose on 2026-11-24 ("on a branch, merged with the SDK's release").
+
+### Changed
+
+- **`asmsdk` 0.4.0, for AsmFoundation.Sdk 0.4.0:** ten runtime identifiers (`linux-musl-arm64`
+  and WebAssembly's two joined the seven), plug and play and the generated bindings. Like the
+  SDK, it has no compatibility layer:
+  - **the skill** (`SKILL.md`): the 0.3.0 to 0.4.0 migration table; the `dotnet new` templates
+    first; sources without boilerplate (`ImplicitUsings`); the generated C# bindings (`PROTO`
+    and `STRUCT` lines, the namespace named after the library, the `Asm` suffix, `AsmBindings`
+    items and properties, `[AsmLibrary]`, their checks) and the C header; programs
+    (`dotnet run`, `dotnet publish`, `PackAsTool`); the build machine's RID as the default and
+    `ASM0013`; .NET's warning switches for NASM; the NativeAOT static library the SDK links
+    itself; footgun rows for the renamed items, `CS0101`, `CS8936` and `ASM0143`; the limits
+    of 0.4.0.
+  - **The references** are re-synced with the documentation site's 0.4.0 pages by a three-way
+    merge (the 0.3.0 page, the plugin's reference, the 0.4.0 page), which keeps the plugin's
+    own links and *verified* marks; their contents lists are regenerated. Two are new:
+    `projects.md` (templates, `ImplicitUsings`, warnings, incremental and reproducible builds,
+    solutions) and `programs.md`.
+  - **`check_asmproj.py`** (67 checks) judges each project by the rules of the SDK version it
+    pins. On 0.4.0: `ASMPRJ024` for 0.3.0's `AsmSource`, `AsmInclude`, `EnableDefaultAsmItems`
+    and `AsmLinkLibrary` (the build's `ASM0109`-`ASM0112`), `ImplicitUsings` (no missing
+    `default rel` or `.note.GNU-stack` finding; an explicit `default abs` still counts), the
+    build machine's RID as the default (`ASMPRJ015` names `ASM0013`, a warning for a packable
+    project), `linux-musl-arm64`, `Compile` and `None` items. `ASMPRJ019` (a wasm RID on 0.3.0)
+    is an error now that no `main` build carries that version.
+  - **`new_asmproj.py`:** SDK 0.4.0 and its eight native RIDs by default; starter sources
+    without the lines `ImplicitUsings` writes; the same `PROTO` lines in every source of a
+    library or static library (none for a `libc` project that also builds wasm, whose exports
+    differ); a classic `.sln` gets the `dotnet sln add` command. Every kind was built for all
+    its RIDs with the 0.4.0 packages, and the Windows programs ran.
+  - **The evaluation suite:** every prompt, grader and the build check name 0.4.0; the
+    WebAssembly prompt lost its `main` caveat; the package task's wrong control keeps
+    `crc.inc` outside `include/` (0.3.0's, a tool without `RuntimeIdentifiers`, builds on
+    0.4.0). `build_check.py --controls` with the 0.4.0 packages: 12 of 12 as named.
+  - **Tests:** 34, with a `v040/` fixture tree for 0.4.0's rules beside the root tree's 0.3.0
+    ones.
 
 ### Added
 

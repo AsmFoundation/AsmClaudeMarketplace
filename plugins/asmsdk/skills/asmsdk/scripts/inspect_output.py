@@ -13,7 +13,7 @@ its JSON mode for ELF, which has one, and in its LLVM text mode for PE and Mach-
 not) and prints one compact summary, or checks expectations and exits 1 when one fails (for CI
 and for verifying a fix).
 
-For WebAssembly (the browser-wasm and wasi-wasm RIDs of the SDK release after 0.3.0): a
+For WebAssembly (the browser-wasm and wasi-wasm RIDs, AsmFoundation.Sdk 0.4.0 and later): a
 module, a WASI command, an object or an archive of objects, read in Python from the binary
 format itself: what the module exports (its functions and `memory`), what it imports (the host
 functions: `env` for JavaScript, `wasi_snapshot_preview1` for WASI), its memory, its custom

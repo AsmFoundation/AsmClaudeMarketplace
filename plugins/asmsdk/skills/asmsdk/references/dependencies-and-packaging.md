@@ -1,4 +1,4 @@
-# Dependencies and packaging: AsmFoundation.Sdk 0.3.0
+# Dependencies and packaging: AsmFoundation.Sdk 0.4.0
 
 Assembly code is shared the way .NET code is shared:
 
@@ -106,7 +106,7 @@ See [Where the binaries go](interop.md#where-the-binaries-go-binariescopypath) f
 | `native/<rid>/<tfm>/<name>.dll.lib` | a Windows DLL's import library | `Library`, Windows RIDs |
 | `runtimes/<rid>/native/` | the shared library, per RID: `<name>.dll`, `lib<name>.so`, `lib<name>.dylib` | `Library`, single target framework |
 | `runtimes/<rid>/nativeassets/<framework>/` | the shared library of each target framework | `Library`, `TargetFrameworks` |
-| `src/**` | `AsmSource` and `AsmInclude` items, with their relative paths | `AsmPackSources=true` |
+| `src/**` | the `.asm` and `.s` `Compile` items and the `None` items ending in `.inc`, with their relative paths | `AsmPackSources=true` |
 | `build/<framework>/<PackageId>.props`, `buildTransitive/<framework>/<PackageId>.props` | generated | one per target framework, always |
 | `build/<framework>/<PackageId>.targets`, `buildTransitive/<framework>/<PackageId>.targets` | generated, plain MSBuild: `BinariesCopyPath` for .NET consumers, and the fallback loader ([Where the binaries go](interop.md#where-the-binaries-go-binariescopypath)) | a shared library is packed under `runtimes/` |
 
@@ -136,15 +136,24 @@ dependency every `.asmproj` carries is removed from the `.nuspec`.
 - **Its `ProjectReference`s become package dependencies too,** on each referenced project's
   `PackageId` and version, as NuGet does for any project reference. A static library linked
   *into* a shared library or a program needs no such dependency, because its code is already
-  inside. Without `PrivateAssets="all"` on that reference, the package still depends on the
-  static library's package. When that package was never published, every consumer fails
-  restore with `NU1101 Unable to find package`:
+  inside: the SDK makes such a reference private, `PrivateAssets="all"`, when MSBuild
+  restores the project (`dotnet restore`, `build`, `pack`), unless the reference sets
+  `PrivateAssets` itself. The package then does not depend on the static library, and the
+  projects that reference the shared library do not get the static library as a transitive
+  reference. Before 0.4.0, a shared library's package still depended on it, and when that
+  package was never published, every consumer failed restore with
+  `NU1101 Unable to find package`.
 
   ```xml
-  <ProjectReference Include="../CrcCore/CrcCore.asmproj" PrivateAssets="all" />  <!-- linked in -->
+  <ProjectReference Include="../CrcCore/CrcCore.asmproj" PrivateAssets="none" />  <!-- keeps the dependency -->
   ```
 
-  A `StaticLibrary` package keeps the dependency: its consumers link both archives.
+  `PrivateAssets="none"` keeps the dependency, for a package that ships the static library
+  too. A `StaticLibrary` package keeps the dependency: its consumers link both archives. So
+  does a shared library that also produces a static library (`AsmProduceStaticLibrary`):
+  whoever links that archive needs its static references. A restore that does not run
+  MSBuild's restore targets does not see the SDK's change: write `PrivateAssets="all"` for such
+  a tool.
 
 ## The generated consumer props
 
@@ -168,9 +177,9 @@ it reads (comment shortened):
   </PropertyGroup>
   <ItemGroup Condition="'$(UsingAsmFoundationSdk)' == 'true'">
     <AsmIncludeDirectory Include="$(MSBuildThisFileDirectory)../../include/" AsmOrigin="Package" AsmPackage="Acme.Crc" />
-    <AsmLinkLibrary Include="$(MSBuildThisFileDirectory)../../native/linux-x64/freestanding/libcrc.a" Condition="'$(_AsmPackageRid_Acme_Crc)' == 'linux-x64'" AsmOrigin="Package" AsmPackage="Acme.Crc" />
-    <AsmLinkLibrary Include="$(MSBuildThisFileDirectory)../../native/osx-arm64/freestanding/libcrc.a" Condition="'$(_AsmPackageRid_Acme_Crc)' == 'osx-arm64'" AsmOrigin="Package" AsmPackage="Acme.Crc" />
-    <AsmLinkLibrary Include="$(MSBuildThisFileDirectory)../../native/win-x64/freestanding/crc.lib" Condition="'$(_AsmPackageRid_Acme_Crc)' == 'win-x64'" AsmOrigin="Package" AsmPackage="Acme.Crc" />
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)../../native/linux-x64/freestanding/libcrc.a" Condition="'$(_AsmPackageRid_Acme_Crc)' == 'linux-x64'" AsmOrigin="Package" AsmPackage="Acme.Crc" />
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)../../native/osx-arm64/freestanding/libcrc.a" Condition="'$(_AsmPackageRid_Acme_Crc)' == 'osx-arm64'" AsmOrigin="Package" AsmPackage="Acme.Crc" />
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)../../native/win-x64/freestanding/crc.lib" Condition="'$(_AsmPackageRid_Acme_Crc)' == 'win-x64'" AsmOrigin="Package" AsmPackage="Acme.Crc" />
   </ItemGroup>
   <Target Name="_AsmCheckPackage_Acme_Crc" BeforeTargets="AsmPrepare" Condition="'$(UsingAsmFoundationSdk)' == 'true' and '$(RuntimeIdentifier)' != '' and '$(_AsmPackageRid_Acme_Crc)' == ''">
     <Error Code="ASM0060" Text="The package Acme.Crc 1.0.0 has no build for $(RuntimeIdentifier) (target framework freestanding): it was packed for linux-x64, win-x64, osx-arm64. …" />
@@ -181,15 +190,18 @@ it reads (comment shortened):
 - **Each RID of the consumer gets the package's nearest build,** by the RID graph's fallbacks
   at pack time: `linux-musl-x64` takes the `linux-x64` library here. A RID with no build is
   `ASM0060`, before anything is assembled.
+- **`NativeLibrary` items,** NativeAOT's name for link inputs, carry the package's libraries.
+  0.3.0 wrote `AsmLinkLibrary` items: a consumer on 0.4.0 or later stops with `ASM0109` on a
+  package packed by 0.3.0 or older, naming it: pack it again.
 
 - **`AsmPackageRoot_<id>`:** characters of the id that are not letters, digits or `_` become
   `_`. The property points at the package root, so a consumer can assemble packed sources
   itself:
-  `<AsmSource Include="$(AsmPackageRoot_Acme_Crc)src/crc_core.asm" />`. That needs
+  `<Compile Include="$(AsmPackageRoot_Acme_Crc)src/crc_core.asm" />`. That needs
   `AsmPackSources=true` in the producer.
 - **The items exist only in asm projects** (`UsingAsmFoundationSdk`). A `.csproj` consumer
   gets just the `runtimes/` folder, through NuGet's normal handling.
-- **`AsmPackageLinkKind`** (in the producer) picks the `AsmLinkLibrary`:
+- **`AsmPackageLinkKind`** (in the producer) picks the `NativeLibrary`:
   - `Static`, the default, takes the static library when one is packed, otherwise the
     shared one (on Windows, the DLL's import library);
   - `Shared` takes the shared one when one is packed, otherwise the static one.

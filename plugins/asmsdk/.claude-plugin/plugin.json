@@ -1,12 +1,12 @@
 {
   "name": "asmsdk",
-  "version": "0.3.0",
-  "description": "AsmSdk (AsmFoundation.Sdk 0.3.0): x86-64 and ARM64 assembly for Windows, Linux and macOS as .asmproj projects built with dotnet build, shared as versioned NuGet packages and P/Invoked from .csproj projects. A skill with the complete SDK reference, the per-OS NASM rules and verified footguns, and scripts to scaffold for every RID, lint per OS and inspect ELF, PE and Mach-O outputs.",
+  "version": "0.4.0",
+  "description": "AsmSdk (AsmFoundation.Sdk 0.4.0): x86-64, ARM64 and WebAssembly assembly for Windows, Linux, macOS, browsers and WASI as .asmproj projects built with dotnet build, run, published and packed with the .NET CLI, shared as versioned NuGet packages, and called from .csproj projects through C# bindings generated from PROTO lines (and from C through a generated header). A skill with the complete SDK reference, the templates, the per-OS NASM rules and verified footguns, and scripts to scaffold for every RID, lint per OS and SDK version, and inspect ELF, PE, Mach-O and WebAssembly outputs.",
   "author": {
     "name": "AsmFoundation"
   },
   "homepage": "https://github.com/AsmFoundation/AsmClaudeMarketplace/tree/main/plugins/asmsdk",
   "repository": "https://github.com/AsmFoundation/AsmClaudeMarketplace",
   "license": "Apache-2.0",
-  "keywords": ["asmsdk", "asmproj", "assembly", "nasm", "x86-64", "arm64", "llvm-mc", "msbuild", "nuget", "dotnet", "windows", "linux", "macos", "elf", "pe", "mach-o", "asmfoundation"]
+  "keywords": ["asmsdk", "asmproj", "assembly", "nasm", "x86-64", "arm64", "webassembly", "wasm", "llvm-mc", "msbuild", "nuget", "dotnet", "windows", "linux", "macos", "elf", "pe", "mach-o", "asmfoundation"]
 }

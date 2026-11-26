@@ -6,4 +6,4 @@ target:
 pattern: '<RuntimeIdentifiers>\s*linux-x64;win-x64\s*</RuntimeIdentifiers>'
 ---
 
-The runtime identifiers are unchanged: 0.3.0 has no default, and a project without them stops with ASM0010.
+The runtime identifiers are unchanged: a project without them builds the build machine's RID only (0.4.0's default).

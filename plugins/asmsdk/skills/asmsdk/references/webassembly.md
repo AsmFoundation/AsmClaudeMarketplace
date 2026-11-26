@@ -1,13 +1,23 @@
 # WebAssembly: browser-wasm and wasi-wasm
 
-> **Not in AsmFoundation.Sdk 0.3.0.** WebAssembly is on AsmSdk's `main` branch, for the next
-> release; 0.3.0 stops a `browser-wasm` or `wasi-wasm` build with **ASM0011**. Use this file when
-> the project's SDK is a build of `main` (a local feed, see "Use an SDK version that is not on
-> nuget.org" in SKILL.md) or a release after 0.3.0. The guide is
+> **Since AsmFoundation.Sdk 0.4.0.** 0.3.0 stops a `browser-wasm` or `wasi-wasm` build with
+> **ASM0011**: a project with a wasm RID needs 0.4.0 or later. The guide is
 > <https://asmfoundation.github.io/AsmSdk/guide/webassembly.html>.
 
 Every fact marked *verified* was measured with the bundled LLVM 23.1.5 (llvm-mc, wasm-ld,
 llvm-ar), .NET 10.0.15, Node 22 and wasmtime 39.
+
+## Contents
+
+1. [The two RIDs and what they build](#the-two-rids-and-what-they-build)
+2. [Sources](#sources)
+3. [Writing it](#writing-it)
+4. [PROTO on WebAssembly: the C# bindings](#proto-on-webassembly-the-c-bindings)
+5. [Using the outputs](#using-the-outputs)
+6. [Templates](#templates)
+7. [Footguns (verified)](#footguns-verified)
+8. [Diagnostics](#diagnostics)
+9. [Verify the outputs](#verify-the-outputs)
 
 ## The two RIDs and what they build
 
@@ -206,7 +216,7 @@ internal static partial int add_ints(int a, int b);
   `runtimeconfig.template.json`:
   `{ "wasmHostProperties": { "perHostConfig": [ { "name": "node", "js-path": "main.mjs", "host": "nodejs" } ] } }`
   (else "no perHostConfigs found").
-- **Debug level (after 0.3.0, the SDK's default):** .NET writes `debugLevel: -1` into every
+- **Debug level (the SDK's default since 0.4.0):** .NET writes `debugLevel: -1` into every
   browser *build*, and in Chromium and Firefox its runtime then runs the debugger: the
   interpreter stays unoptimized and the jiterpreter compiles nothing (*verified*: C# 5-7 MB/s
   with 0 traces, 134 MB/s with `debugLevel: 0`, in headless Chrome; Node never enables the
@@ -214,9 +224,9 @@ internal static partial int add_ints(int a, int b);
   links asm code, by project reference or package: `0` in Release, `-1` in Debug; the app's own
   value wins, other configurations and every publish keep .NET's (*verified*: 128-158 MB/s with
   the default, 11.6-12.2 MB/s with `-p:WasmDebugLevel=-1`). So time a Release build or a
-  publish, never a Debug build. On 0.3.0 itself, set `<WasmDebugLevel Condition="'$(Configuration)' == 'Release'">0</WasmDebugLevel>`.
+  publish, never a Debug build.
 - AOT (`RunAOTCompilation=true`) happens at `dotnet publish` only; a build with it still
-  interprets (*verified*: a byte-identical `dotnet.native.wasm`), and after 0.3.0 says so:
+  interprets (*verified*: a byte-identical `dotnet.native.wasm`), and the SDK says so:
   **ASM0055** (warning). Time a publish; `<NoWarn>$(NoWarn);ASM0055</NoWarn>` when the property
   is there for the publishes (Blazor). Never suggest `RunAOTCompilationAfterBuild` to silence
   it: it compiled all 174 untrimmed assemblies (~5 min), then .NET's `llvm-size` failed (MSB3073).
@@ -247,7 +257,7 @@ instance.exports.add_ints(40, 2);   // 42; memory is instance.exports.memory
   wasm app of that RID a `NativeFileReference`) and `native/<rid>/<tfm>/name.wasm`. Nothing under
   `runtimes/`.
 
-## Templates (next release)
+## Templates
 
 - `dotnet new asmwasm -n Calc`: a library for both wasm RIDs with `add.wasm.s` and `run.mjs`
   (`node Calc/run.mjs` prints `add_ints(40, 2) = 42`).
@@ -279,7 +289,7 @@ instance.exports.add_ints(40, 2);   // 42; memory is instance.exports.memory
 
 | Code / text | Cause | Fix |
 |---|---|---|
-| ASM0011 | AsmFoundation.Sdk 0.3.0 and a wasm RID | an SDK after 0.3.0 |
+| ASM0011 | AsmFoundation.Sdk 0.3.0 and a wasm RID | AsmFoundation.Sdk 0.4.0 or later |
 | ASM0016 | `libc` module or WASI program | `freestanding`, or a `StaticLibrary` for a .NET app |
 | ASM0017 | `Exe` for `browser-wasm` | a `Library`, or the program for `wasi-wasm` |
 | ASM0018 | a define with a value | define the name alone |

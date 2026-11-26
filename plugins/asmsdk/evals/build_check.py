@@ -3,7 +3,7 @@
 
 Why this exists: `claude plugin eval` grades the files an agent wrote with regex and file
 graders, which can only check the shape of the answer. Whether the answer works is decided by
-`dotnet build` with the real SDK (0.3.0) and its bundled NASM and LLVM linkers, by the exports
+`dotnet build` with the real SDK (0.4.0) and its bundled NASM and LLVM linkers, by the exports
 of each runtime identifier's output (ELF, PE and Mach-O, read by the plugin's own
 inspect_output.py), and by running the Linux outputs. This script does that for both arms
 (with and without the plugin) of each task case, from a `claude plugin eval --keep-temp
@@ -52,7 +52,7 @@ ASMPROJ_TYPE_GUID = "13B669BE-BB05-4DDF-9536-439F39A36129"
 #: The SDK version the prompts name, and the one a global.json gets when a task did not ask
 #: the agent to write one. Keep it equal to the prompts' version: a workspace pinned to
 #: another version would be built against an SDK its task never described.
-SDK_VERSION = "0.3.0"
+SDK_VERSION = "0.4.0"
 
 #: Container image used to run the Linux outputs; it has glibc 2.39 and the .NET 10 runtime.
 RUNTIME_IMAGE = "mcr.microsoft.com/dotnet/runtime:10.0"
@@ -202,7 +202,7 @@ def ensure_global_json(workspace: str) -> bool:
 def find_output(workspace: str, project_dir: str, rid: str, name: str) -> Optional[str]:
     """Find one RID's output of an asm project, whatever target framework built it.
 
-    0.3.0 puts each RID's output in bin/<Configuration>/<TargetFramework>/<rid>/, and the
+    AsmSdk (since 0.3.0) puts each RID's output in bin/<Configuration>/<TargetFramework>/<rid>/, and the
     tasks leave the target framework to the agent (freestanding or libc), so the framework
     folder is a wildcard.
 

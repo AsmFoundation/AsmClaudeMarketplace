@@ -91,6 +91,29 @@ jobs:
 - **Pre-release SDKs:** while a project uses an SDK version that is not on nuget.org, commit
   the folder feed, or download it in a step before the build, and keep a `nuget.config`
   mapping as in [References and packages](dependencies-and-packaging.md#feeds-and-publishing).
+- **WebAssembly:** every runner builds `browser-wasm` and `wasi-wasm` with
+  the bundled tools. The outputs need a host to run in:
+  - Node runs the modules, and is on every hosted runner;
+  - wasmtime runs WASI programs: download its release archive for the runner and add it to
+    `PATH`, and then `dotnet run` uses it too;
+  - a .NET WebAssembly app's build needs `dotnet workload install wasm-tools` (browser) or
+    `wasi-experimental` with the WASI SDK 25.0 in `WASI_SDK_PATH` (WASI). On Linux, install the
+    .NET SDK into a folder the runner owns (`DOTNET_INSTALL_DIR` for `setup-dotnet`), because
+    a workload installs into the SDK's own folder;
+  - the workload belongs to the app's .NET version, so the runner needs that .NET's SDK.
+    GitHub's Windows images come with SDK 11.0.100 and Visual Studio's `wasm-tools`, which
+    serves `net11.0` only: without more, the SDK stops a `net10.0` app with ASM0054 instead of
+    letting .NET build it without its asm code. `wasm-tools-net10` on that SDK serves only an
+    app made with `Microsoft.NET.Sdk.WebAssembly` (the `wasmbrowser` template, Blazor
+    WebAssembly), which built and ran with it; .NET's own targets stopped every `net10.0` app made
+    with `Microsoft.NET.Sdk` and `RuntimeIdentifier` `browser-wasm` (the `wasmconsole` shape,
+    AsmSdk's own apps; measured in CI and on a clean install), and a `net10.0` WASI app has no
+    workload on SDK 11.0.100 at all. For those, install the .NET 10 SDK into a folder of the
+    runner's own (`DOTNET_INSTALL_DIR` for `setup-dotnet`), where it is the `dotnet` on `PATH`
+    and its workloads install without administrator rights.
+
+  AsmSdk's own CI does all of this (see [WebAssembly](webassembly.md)): Linux x64 and Windows
+  x64 link both kinds of app.
 
 ## Versioning
 
