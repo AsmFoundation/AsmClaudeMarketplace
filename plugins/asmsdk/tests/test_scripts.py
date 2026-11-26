@@ -22,6 +22,7 @@ import importlib.util
 import io
 import json
 import os
+import struct
 import sys
 import tempfile
 import unittest
@@ -60,13 +61,71 @@ GOOD_FN = "default rel\nsection .text\nglobal {n}:function ({n}.end - {n})\n{n}:
 WASM_FN = "FUNCTION {n}, () -> (i32)\n    i32.const 7\nENDFUNCTION {n}\n"
 
 #: A wasm source that uses every construct the linter must accept: PROTO, a call to a function
-#: further down declared with EXTERN_FUNCTION, a LOCAL_FUNCTION, sized and aligned data.
+#: further down declared with EXTERN_FUNCTION, a LOCAL_FUNCTION, sized and aligned data, and
+#: float operands llvm-mc 23.1.5 reads exactly (each form measured: a short exact decimal, a
+#: hex float, an exponent, infinity, nan, f32x4 lanes, the longest exact decimal it proves).
 GOOD_WASM = ("PROTO int32_t g_add(int32_t a, int32_t b)\nFUNCTION g_add, (i32, i32) -> (i32)\n"
              "    local.get 0\n    local.get 1\n    i32.add\nENDFUNCTION g_add\n\n"
              "EXTERN_FUNCTION g_later, () -> (i32)\nFUNCTION g_twice, () -> (i32)\n"
              "    CALL g_later\n    CALL g_later\n    i32.add\nENDFUNCTION g_twice\n\n"
              "LOCAL_FUNCTION g_later, () -> (i32)\n    i32.const 21\nENDFUNCTION g_later\n\n"
+             "FUNCTION g_floats, (f32) -> (f32)\n    local.get 0\n    f32.const 0x1.ae147ap-2   // 0.42 as an f32\n"
+             "    f32.mul\n    f32.const 1.0\n    f32.add\n    f32.const 1.25e-1\n    f32.add\n"
+             "    f32.const -infinity\n    f32.max\n    f32.const nan\n    f32.min\nENDFUNCTION g_floats\n\n"
+             "FUNCTION g_lanes, () -> (v128)\n    v128.const 0.5, 1.0, 1.5, 2.0\n    v128.const 1, 2, 3, 4\n"
+             "    f32x4.add\nENDFUNCTION g_lanes\n\n"
+             "FUNCTION g_tiny, () -> (f64)\n    f64.const 0.000000007450580596923828125   // 2^-27: 63 bits of digits\n"
+             "ENDFUNCTION g_tiny\n\n"
              "    RODATA\n    .p2align 2\ng_table:\n    .int 1, 2, 3\nENDDATA g_table\n")
+
+#: Float operands llvm-mc 23.1.5 refuses (ASMWASM015) or rounds unannounced (ASMWASM016), one
+#: per line, each with its measured outcome: (line, code or None, the rewritten instruction the
+#: fix must start with). The fixture puts each in a function of its own, after a macro whose
+#: body holds f32.const \value (a parameter: never judged).
+FLOAT_LINES = [
+    ("f32.const 1", "ASMWASM015", "f32.const 1.0"),                        # an integer: invalid operand
+    ("f32.const 0.42", "ASMWASM015", "f32.const 0x1.ae147ap-2"),           # no double: Cannot parse real
+    ("f32.const 0.4199999868869781494140625", "ASMWASM015", "f32.const 0x1.ae147ap-2"),  # exact, 82 bits of digits
+    ("f64.const 0.1", "ASMWASM015", "f64.const 0x1.999999999999ap-4"),
+    ("f64.const 0.0000000037252902984619140625", "ASMWASM015", "f64.const 0x1p-28"),     # 2^-28: 65 bits
+    ("f32.const -inf", "ASMWASM015", "f32.const -infinity"),
+    ("f32.const 06.5", "ASMWASM015", "f32.const 6.5"),                     # 06 lexes as octal
+    ("f32.const 0x3f800000", "ASMWASM015", "f32.const 0x1.fcp29"),         # the value; the message names the bits' way
+    ("v128.const 0.1, 1.0, 1.5, 2.0", "ASMWASM015", "v128.const 0x1.99999ap-4, 1.0, 1.5, 2.0"),
+    ("v128.const 1, 2.0, 3, 4", "ASMWASM015", "v128.const 1.0, 2.0, 3.0, 4.0"),
+    ("f32.const 16777217.0", "ASMWASM016", "f32.const 16777216.0"),        # stored 0x4b800000
+    ("f32.const 0x1.ae147ae147ae1p-2", "ASMWASM016", "f32.const 0x1.ae147ap-2"),
+    ("f32.const 0x1p200", "ASMWASM016", "f32.const infinity"),             # stored 0x7f800000
+    ("f32.const -0x1p-150", "ASMWASM016", "f32.const -0.0"),               # a tie: to even, zero
+    ("f32.const 0.5", None, ""),
+    ("f64.const 16777217.0", None, ""),                                    # an f64 holds it
+    ("v128.const 0, 1, 2, 3", None, ""),                                   # integer lanes
+]
+
+#: Literals llvm-mc 23.1.5 assembled as f32.const and f64.const operands (measured one by one).
+#: They pin what tells rules apart: 2^-27 written out in full has 63 bits of digits (5^27), and
+#: 3 * 2^-26 62 with a trailing decimal zero (dropped); 2^53 - 1, 2^54 and 2^62 are exact; a 0
+#: followed by a point lexes as a decimal; hex floats may pad.
+MEASURED_ACCEPTED = ["1.0", "-1.0", "0.5", "256.0", "3.75", "1e3", "1.0E3", "1.25e-1", ".5", "5.", "0.0", "0.0e1",
+                     "0.000000007450580596923828125", "0.000000044703483581542968750", "9007199254740991.0",
+                     "18014398509481984.0", "4611686018427387904.0", "16777217.0", "0x1.ae147ap-2", "0X1P-2",
+                     "-0x1p-2", "0x01p0", "0x001.8p1", "0x1.ae147ae147ae1p-2", "0x1p-1074"]
+
+#: Literals llvm-mc 23.1.5 refused (measured): no double (0.1, 0.42, 1.5e-1, 2^53 + 1, 0x1p1024,
+#: 0x1p-1075, 65 bits of hex); exact doubles whose digits need more than 63 bits (7 * 2^-26 in
+#: full, 64 bits: the limit's edge; the f32 values nearest 0.42, the double 0.1, 2^-28 and
+#: 3 * 2^-27 in full); a 0 no point follows.
+MEASURED_REFUSED = ["0.42", "0.1", "1.5e-1", "9007199254740993.0", "1234567890123456789.0", "0x1p1024", "0x1p-1075",
+                    "0x1.ae147ae147ae147ap-2", "0.00000010430812835693359375", "0.4199999868869781494140625",
+                    "0.420000016689300537109375", "0.1000000000000000055511151231257827021181583404541015625",
+                    "0.0000000037252902984619140625", "0.000000022351741790771484375",
+                    "00.5", "06.", "-01.0", "0e0", "01e3", "08.0"]
+
+#: The f32 bits llvm-mc 23.1.5 stored for f32.const operands (read back from the objects): IEEE
+#: rounding of the double it read, ties to even, overflowing to infinity, underflowing to zero.
+MEASURED_F32_BITS = {"0.5": "3f000000", "16777217.0": "4b800000", "16777219.0": "4b800002",
+                     "0x1.ae147ae147ae1p-2": "3ed70a3d", "0x1.ae147ap-2": "3ed70a3d", "0x1p200": "7f800000",
+                     "0x1p-149": "00000001", "0x1p-150": "00000000", "0x1.8p-150": "00000001"}
 
 #: A source for every OS: asmsdk.inc's FUNCTION, the note only on Linux.
 PORTABLE_FN = ('default rel\n%include "asmsdk.inc"\nsection .text\nFUNCTION {n}\n    xor eax, eax\n    RETURN\nENDFUNCTION\n'
@@ -299,6 +358,14 @@ FIXTURES: Dict[str, str] = {
     "wasm/proto/p.wasm.s": "PROTO int64_t p_wide(int64_t x)\nFUNCTION p_wide, (i32) -> (i32)\n    local.get 0\nENDFUNCTION p_wide\n",
     "wasm/local/Local.asmproj": proj(rids="browser-wasm"),
     "wasm/local/l.wasm.s": "PROTO int32_t l_inner(void)\nLOCAL_FUNCTION l_inner, () -> (i32)\n    i32.const 1\nENDFUNCTION l_inner\n",
+    "wasm/floats/Floats.asmproj": proj(rids="browser-wasm"),
+    "wasm/floats/f.wasm.s": "FUNCTION f_scale, (f32) -> (f32)\n    local.get 0\n    f32.const 0.42\n    f32.mul\nENDFUNCTION f_scale\n",
+    "wasm/rounded/Rounded.asmproj": proj(rids="browser-wasm"),
+    "wasm/rounded/r.wasm.s": "FUNCTION r_big, () -> (f32)\n    f32.const 16777217.0\nENDFUNCTION r_big\n",
+    "wasm/floatlines/FloatLines.asmproj": proj(rids="browser-wasm"),
+    "wasm/floatlines/f.wasm.s": ".macro SPLAT value\n    f32.const \\value\n    f32x4.splat\n.endm\n"
+                                + "".join(f"FUNCTION fl_{i}, () -> ()\n    {line}\n    drop\nENDFUNCTION fl_{i}\n"
+                                          for i, (line, _, _) in enumerate(FLOAT_LINES)),
     "wasm/browserexe/BrowserExe.asmproj": proj("<OutputType>Exe</OutputType>", rids="browser-wasm"),
     "wasm/browserexe/main.wasm.s": "FUNCTION _start, () -> ()\nENDFUNCTION _start\n",
     "wasm/libcmod/LibcMod.asmproj": proj("<TargetFramework>libc</TargetFramework>", rids="wasi-wasm"),
@@ -378,6 +445,9 @@ EXPECTED: Dict[str, Set[str]] = {
     "wasm/wasi/Wasi.asmproj": {"ASMWASM012"},
     "wasm/proto/Proto.asmproj": {"ASMWASM013"},
     "wasm/local/Local.asmproj": {"ASMWASM014"},
+    "wasm/floats/Floats.asmproj": {"ASMWASM015"},
+    "wasm/rounded/Rounded.asmproj": {"ASMWASM016"},
+    "wasm/floatlines/FloatLines.asmproj": {"ASMWASM015", "ASMWASM016"},
     "wasm/browserexe/BrowserExe.asmproj": {"ASMPRJ020"},
     "wasm/libcmod/LibcMod.asmproj": {"ASMPRJ021"},
     "wasm/defval/DefVal.asmproj": {"ASMPRJ022"},
@@ -475,6 +545,54 @@ class CheckAsmprojTests(unittest.TestCase):
             code, findings = run_json(check_asmproj, [os.path.join(self.tmp.name, "wasm030/Wasm030.asmproj")])
         self.assertEqual(0, code)
         self.assertEqual([("info", "ASMPRJ019")], [(f["severity"], f["code"]) for f in findings if f["code"] == "ASMPRJ019"])
+
+    def test_wasm_float_operands(self) -> None:
+        """Each float operand llvm-mc refuses or rounds is reported on its own line, with the
+        instruction rewritten in literals llvm-mc reads exactly; the forms it reads are not.
+
+        A finding that names the wrong line, or a fix that would itself be refused, would send
+        the user after the wrong number, so both are asserted per line (FLOAT_LINES), as is the
+        silence on the macro body's f32.const \\value.
+        """
+        with nuget_packages(None):
+            _, findings = run_json(check_asmproj, [os.path.join(self.tmp.name, "wasm", "floatlines", "FloatLines.asmproj")])
+        source = FIXTURES["wasm/floatlines/f.wasm.s"].splitlines()
+        by_line = {f["line"]: f for f in findings if f["code"] in ("ASMWASM015", "ASMWASM016")}
+        for line, code, fix in FLOAT_LINES:
+            with self.subTest(line=line):
+                found = by_line.get(source.index(f"    {line}") + 1)
+                if code is None:
+                    self.assertIsNone(found)
+                    continue
+                self.assertIsNotNone(found)
+                self.assertEqual(code, found["code"])
+                self.assertEqual("error" if code == "ASMWASM015" else "warning", found["severity"])
+                # The rewritten instruction, alone or followed by a note (" (a hex float ...)",
+                # ", which says what is stored ...").
+                self.assertTrue(found["fix"] == fix or found["fix"].startswith((fix + " ", fix + ",")), found["fix"])
+        self.assertEqual(sum(1 for _, code, _ in FLOAT_LINES if code), len(by_line), "a finding on a line FLOAT_LINES does not expect")
+        bits = next(f for f in findings if f["message"].startswith("f32.const 0x3f800000"))
+        self.assertIn("if 0x3f800000 is meant as bits, i32.const then f32.reinterpret_i32", bits["message"])
+
+    def test_float_rule_matches_llvm_mc(self) -> None:
+        """llvm_mc_reads_float and nearest_float give llvm-mc 23.1.5's measured answers.
+
+        The literals and bits are llvm-mc's own (each assembled and the object read back); when
+        the rule was written it was also run against llvm-mc on 9,000 random literals with no
+        difference. Every suggestion wasm_float_literal makes must itself be read exactly.
+        """
+        for text in MEASURED_ACCEPTED:
+            self.assertTrue(check_asmproj.llvm_mc_reads_float(text), text)
+        for text in MEASURED_REFUSED:
+            self.assertFalse(check_asmproj.llvm_mc_reads_float(text), text)
+        for text, bits in MEASURED_F32_BITS.items():
+            value = check_asmproj.float_literal_value(text)
+            stored = check_asmproj.nearest_float(value, "f32")
+            self.assertEqual(bits, "7f800000" if stored is None else struct.pack(">f", float(stored)).hex(), text)
+            suggestion = check_asmproj.wasm_float_literal(stored, False)
+            if stored is not None:
+                self.assertTrue(check_asmproj.llvm_mc_reads_float(suggestion), suggestion)
+                self.assertEqual(stored, check_asmproj.float_literal_value(suggestion), suggestion)
 
     def test_platform_findings_name_the_platform(self) -> None:
         """A directive one format rejects is reported for that format, as an error when the RIDs are declared."""

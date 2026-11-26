@@ -30,10 +30,11 @@ checks are line-based heuristics over NASM syntax: treat a warning as "look here
 WebAssembly (browser-wasm, wasi-wasm: the SDK release after 0.3.0): the project rules (no wasm
 in 0.3.0, no browser program, no libc module, no define with a value, no pattern in a module's
 ExportsFile) and, for each .s source a wasm RID selects, the measured traps of llvm-mc's wasm
-parser and writer (ASMWASM001-ASMWASM013): assembler constants, data labels without a size,
+parser and writer (ASMWASM001-ASMWASM016): assembler constants, data labels without a size,
 PROTO or a function macro inside a function, untyped select, return_call where .NET links the
 code, calls to functions whose type llvm-mc has not seen, a PROTO line whose C types lower to
-another wasm signature than its FUNCTION's.
+another wasm signature than its FUNCTION's, a PROTO for no exported function, float operands
+llvm-mc refuses (an integer, inf, a decimal it cannot prove exact) or rounds to f32 unannounced.
 
 Usage:
     check_asmproj.py <path> [<path> ...] [--json] [--no-info]
@@ -52,6 +53,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
+from fractions import Fraction
 from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 #: The SDK version whose behavior these checks encode.
@@ -989,6 +991,199 @@ def describe_oses(oses: Iterable[str]) -> str:
     return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
 
 
+#: The binary formats of WebAssembly's float constants, IEEE 754 binary32 and binary64:
+#: (significand bits with the implicit one, the least exponent of a normal number, the greatest).
+WASM_FLOAT_FORMATS: Dict[str, Tuple[int, int, int]] = {"f32": (24, -126, 127), "f64": (53, -1022, 1023)}
+
+#: A hex float as llvm-mc 23.1.5's lexer reads one (0x1.ae147ap-2, -0X1P-2); the p exponent is
+#: required. A leading + is no sign there: "Unexpected token in operand: +".
+WASM_HEX_FLOAT = re.compile(r"^-?0[xX](?:[0-9a-fA-F]+(?:\.[0-9a-fA-F]*)?|\.[0-9a-fA-F]+)[pP][+-]?\d+$")
+
+#: A decimal float as the lexer reads one: a point or an exponent makes a real (1.0, .5, 5.,
+#: 1e3, 1.25e-1); digits alone are an integer.
+WASM_DECIMAL_FLOAT = re.compile(r"^-?(?:\d+\.\d*|\.\d+|\d+(?=[eE]))(?:[eE][+-]?\d+)?$")
+
+#: An integer (decimal or hex), which a float operand refuses: "invalid operand for instruction".
+WASM_INTEGER = re.compile(r"^-?(?:0[xX][0-9a-fA-F]+|\d+)$")
+
+#: Exponents beyond this are outside every float's range by thousands of binary places; the
+#: exact arithmetic below skips them rather than build 10**exponent for a pathological literal.
+WASM_FLOAT_EXPONENT_LIMIT = 4000
+
+
+def float_literal_value(text: str) -> Optional[Fraction]:
+    """The exact value a decimal or hex float literal writes, before any rounding.
+
+    Args:
+        text: A literal WASM_DECIMAL_FLOAT or WASM_HEX_FLOAT matches.
+
+    Returns:
+        Its value as a fraction (0.1 is 1/10, not the double nearest it), or None when its
+        exponent passes WASM_FLOAT_EXPONENT_LIMIT (the caller then judges nothing).
+    """
+    negative = text.startswith("-")
+    body = text.lstrip("-").lower()
+    hexadecimal = body.startswith("0x")
+    mantissa, _, power_text = (body[2:].partition("p") if hexadecimal else body.partition("e"))
+    power = int(power_text or "0")
+    if abs(power) > WASM_FLOAT_EXPONENT_LIMIT:
+        return None
+    whole, _, fraction = mantissa.partition(".")
+    if hexadecimal:
+        # Each hex digit after the point is a sixteenth; the p exponent is a power of two.
+        value = Fraction(int((whole + fraction) or "0", 16), 16 ** len(fraction)) * Fraction(2) ** power
+    else:
+        value = Fraction(int((whole + fraction) or "0")) * Fraction(10) ** (power - len(fraction))
+    return -value if negative else value
+
+
+def nearest_float(value: Fraction, kind: str) -> Optional[Fraction]:
+    """The f32 or f64 nearest a value, ties to even, as IEEE 754 rounds.
+
+    llvm-mc rounds an f32 operand this way from the double it read, without a word (measured:
+    16777217.0 was stored as 16777216.0, 16777219.0 as 16777220.0, 0x1p-150 as zero and
+    0x1p200 as infinity).
+
+    Args:
+        value: Any exact value.
+        kind: "f32" or "f64".
+
+    Returns:
+        The nearest value the format holds (a subnormal, or zero, below its normal range), or
+        None when the value rounds to infinity.
+    """
+    if value == 0:
+        return Fraction(0)
+    precision, least, greatest = WASM_FLOAT_FORMATS[kind]
+    magnitude = abs(value)
+    exponent = magnitude.numerator.bit_length() - magnitude.denominator.bit_length()
+    if Fraction(2) ** exponent > magnitude:
+        exponent -= 1                       # now 2**exponent <= magnitude < 2**(exponent + 1)
+    # The weight of the last significand bit: precision - 1 places below the leading one, and
+    # never finer than the smallest subnormal's (the format's least exponent caps it).
+    quantum = max(exponent, least) - (precision - 1)
+    scaled = magnitude / Fraction(2) ** quantum
+    whole, rest = divmod(scaled.numerator, scaled.denominator)
+    if 2 * rest > scaled.denominator or (2 * rest == scaled.denominator and whole % 2 == 1):
+        whole += 1                          # rounding up may carry into the next binade: still exact
+    rounded = Fraction(whole) * Fraction(2) ** quantum
+    if rounded >= Fraction(2) ** (greatest + 1):
+        return None
+    return rounded if value > 0 else -rounded
+
+
+def wasm_float_lexes_as_octal(text: str) -> bool:
+    """Whether llvm-mc's lexer splits a decimal float into an octal integer and another token.
+
+    LLVM's AsmLexer reads a number that starts with 0 as a decimal float only when a point comes
+    right after that 0 (0.5, 0.0e1); otherwise the 0 starts an octal integer (measured: 00.5,
+    06., -01.0, 0e0 and 01e3 stop with "Expected ,, instead got: .5" and the like, 08.0 and 09.5
+    with "Unexpected token in operand"). This runs before the value is parsed, so it decides
+    first. Hex floats are not affected (0x01p0 assembles).
+
+    Args:
+        text: A literal WASM_DECIMAL_FLOAT or WASM_HEX_FLOAT matches.
+
+    Returns:
+        True for a decimal whose leading 0 no point follows.
+    """
+    body = text.lstrip("-")
+    return not WASM_HEX_FLOAT.match(text) and body.startswith("0") and body[1:2] != "."
+
+
+def llvm_mc_reads_float(text: str) -> bool:
+    """Whether llvm-mc 23.1.5's WebAssembly parser takes a literal as a float operand.
+
+    The parser asks LLVM's APFloat for a double and refuses any conversion APFloat reports
+    inexact ("Cannot parse real"). A hex float converts exactly, so it passes when its value is
+    a double. A decimal is worked out from its significant digits as an integer held in 63 bits,
+    and only a conversion that never rounded counts as exact, so it passes when its value is a
+    double AND those digits need 63 significant bits or fewer. Before that, the lexer reads a
+    decimal that starts with a 0 no point follows (00.5, 06., 0e0) as an octal integer and the
+    rest as another token. Measured: 0.5, 3.75, 1e3, 1.25e-1, 2^62 and 2^-27 written out in full
+    (its digits are 5^27, 63 bits) pass; 0.1 and 0.42 (no double), 2^53 + 1, 2^-28 in full (5^28,
+    65 bits) and the f32 nearest 0.42 in full (0.4199999868869781494140625: a double, 82 bits of
+    digits) do not. On 9,000 random literals (three seeds), each as f32.const and as f64.const,
+    every acceptance and every stored bit came out as this rule and nearest_float predict, and
+    each of the 7,388 replacements wasm_float_literal gave for a refused one assembled to the
+    nearest value.
+
+    Args:
+        text: A literal WASM_DECIMAL_FLOAT or WASM_HEX_FLOAT matches.
+
+    Returns:
+        True when the parser takes it (an f32 operand is then rounded from that double:
+        nearest_float); False when assembling stops ("Cannot parse real", or for a leading 0 a
+        token error such as "Expected ,, instead got: .5").
+    """
+    if wasm_float_lexes_as_octal(text):
+        return False
+    value = float_literal_value(text)
+    if value is None or nearest_float(value, "f64") != value:
+        return False
+    if WASM_HEX_FLOAT.match(text):
+        return True
+    # APFloat drops the leading and trailing zeros: 0.4250 is the digits 425 at some exponent.
+    digits = int(text.lstrip("-").lower().partition("e")[0].replace(".", "").strip("0") or "0")
+    if digits == 0:
+        return True
+    # Significant bits: from the highest one to the lowest one (trailing zero bits cost nothing).
+    lowest_one = (digits & -digits).bit_length() - 1
+    return (digits >> lowest_one).bit_length() <= 63
+
+
+def hex_float(magnitude: Fraction) -> str:
+    """A positive binary value as a C99 hex float with no trailing zero digits.
+
+    This is the form llvm-mc's WebAssembly printer writes (APFloat's convertToHexString), and
+    one its parser reads exactly whenever the value is a double.
+
+    Args:
+        magnitude: A positive value whose denominator is a power of two.
+
+    Returns:
+        "0x1.<hex digits>p<exponent>" (0x1.ae147ap-2), or "0x1p<exponent>" for a power of two.
+    """
+    numerator, denominator = magnitude.numerator, magnitude.denominator
+    top = numerator.bit_length() - 1                        # the leading one's place
+    exponent = top - (denominator.bit_length() - 1)
+    digits = (top + 3) // 4                                 # the bits after the leading one, in hex
+    fraction = (numerator - (1 << top)) << (4 * digits - top)
+    text = format(fraction, f"0{digits}x").rstrip("0") if digits else ""
+    return f"0x1.{text}p{exponent}" if text else f"0x1p{exponent}"
+
+
+def wasm_float_literal(value: Optional[Fraction], negative: bool) -> str:
+    """A literal llvm-mc reads as exactly a given f32 or f64 value.
+
+    Args:
+        value: nearest_float's result: a value the format holds, or None for infinity.
+        negative: Whether the value written was negative (it signs zero and infinity, which the
+            value alone cannot).
+
+    Returns:
+        "infinity" (the name the parser knows: it refuses "inf"), a decimal of at most 9
+        significant digits when one is read exactly (1.0, 0.25, 16777216.0), else the hex float
+        (0x1.ae147ap-2); each with a minus when negative.
+    """
+    sign = "-" if negative else ""
+    if value is None:
+        return sign + "infinity"
+    if value == 0:
+        return sign + "0.0"
+    magnitude = abs(value)
+    places = magnitude.denominator.bit_length() - 1         # value = numerator / 2**places
+    digits = str(magnitude.numerator * 5 ** places)         # = digits / 10**places, exactly
+    if places:
+        digits = digits.rjust(places + 1, "0")
+        decimal = f"{digits[:-places]}.{digits[-places:]}"
+    else:
+        decimal = f"{digits}.0"
+    if len(decimal.replace(".", "").strip("0")) <= 9 and llvm_mc_reads_float(decimal):
+        return sign + decimal
+    return sign + hex_float(magnitude)
+
+
 class Linter:
     """Runs every check over a set of projects and collects Findings.
 
@@ -1829,6 +2024,9 @@ class Linter:
                     self.add("error", "ASMWASM008", path, number,
                              "an untyped select: llvm-mc 23.1.5's type checker refuses it ('type mismatch, expected [i32] but got [i32, i32]' at ENDFUNCTION)",
                              "if i32 ... else ... end_if, leaving the chosen value")
+                constant = re.match(r"^(f32\.const|f64\.const|v128\.const)\s+(\S.*)$", stripped)
+                if constant:
+                    self._check_wasm_float_operands(path, number, constant.group(1), constant.group(2))
                 call = re.match(r"^(call|CALL|TAILCALL|return_call)\s+([\w.$]+)\s*$", stripped)
                 if call:
                     if call.group(1) == "return_call" and linked_into_dotnet:
@@ -1859,6 +2057,108 @@ class Linter:
                          "WASI is imported, and no data here is aligned: llvm-mc aligns nothing by itself, and wasmtime refuses a misaligned "
                          "iovec or result pointer ('Pointer not aligned to 4')",
                          ".p2align 2 before the 32-bit values a WASI call is given")
+
+    def _check_wasm_float_operands(self, path: str, number: int, instruction: str, operands: str) -> None:
+        """ASMWASM015 and ASMWASM016: the float operands llvm-mc 23.1.5 refuses, and the f32
+        operands it rounds without a word.
+
+        llvm-mc reads every float operand as a double (llvm_mc_reads_float has the rule) and
+        writes an f32 operand as that double rounded to f32. Each finding's fix is the whole
+        instruction rewritten with literals that are read exactly, so it can be pasted as is.
+        Anything that is not a number (a macro parameter such as \\value, nan, infinity) is
+        left alone.
+
+        Args:
+            path: The source.
+            number: The line.
+            instruction: "f32.const", "f64.const" or "v128.const".
+            operands: The text after it: one literal, or a v128.const's comma-separated lanes.
+        """
+        lanes = [lane.strip() for lane in operands.split(",")]
+        if instruction == "v128.const":
+            # Integer lanes make an integer vector, with nothing to check here. A float lane makes
+            # f32x4 when there are four lanes and f64x2 when there are two; any other count is
+            # llvm-mc's own error ("too few operands for instruction").
+            if not any(WASM_DECIMAL_FLOAT.match(lane) or WASM_HEX_FLOAT.match(lane) for lane in lanes) or len(lanes) not in (2, 4):
+                return
+            kind = "f32" if len(lanes) == 4 else "f64"
+        elif len(lanes) == 1:
+            kind = instruction[:3]
+        else:
+            return
+        integers: List[str] = []         # integer lanes: one reason names them all
+        bit_patterns: List[str] = []     # the hex ones among them, which may be meant as bits
+        refused: List[str] = []          # why each other refused lane stops assembling
+        rounded: List[str] = []          # what each silently rounded lane becomes
+        written: List[str] = []          # every lane as it should be written
+        parse_rule = False               # a "Cannot parse real" refusal: the rule is worth stating
+        suggested_hex = False            # a replacement is a hex float the user did not write
+        for lane in lanes:
+            negative = lane.startswith("-")
+            if WASM_INTEGER.match(lane):
+                is_hex = lane.lstrip("-")[:2].lower() == "0x"
+                value = Fraction(int(lane, 16 if is_hex else 10))
+                literal = wasm_float_literal(nearest_float(value, kind), negative)
+                integers.append(lane)
+                if is_hex:
+                    bit_patterns.append(lane)
+                suggested_hex |= literal.lstrip("-").startswith("0x")
+                written.append(literal)
+            elif re.match(r"^-?inf$", lane, re.IGNORECASE):
+                # The parser knows the name infinity (any case) and nan; inf is an unknown word
+                # ("invalid operand for instruction", or after a minus "Expected numeric constant").
+                refused.append(f"{lane} is not a name the parser knows: it knows infinity ('invalid operand for instruction')")
+                written.append(("-" if negative else "") + "infinity")
+            elif WASM_DECIMAL_FLOAT.match(lane) or WASM_HEX_FLOAT.match(lane):
+                value = float_literal_value(lane)
+                if value is None:
+                    written.append(lane)
+                    continue
+                stored = nearest_float(value, kind)
+                literal = wasm_float_literal(stored, negative)
+                if not llvm_mc_reads_float(lane):
+                    # The order llvm_mc_reads_float decides in (the lexer, then the parser), so the
+                    # reason named is the one that stops this literal: 06.1 is an octal start first.
+                    if wasm_float_lexes_as_octal(lane):
+                        refused.append(f"{lane} starts with a 0 that no point follows, which llvm-mc's lexer reads as an octal integer "
+                                       f"(an error such as 'Expected ,, instead got: .5')")
+                    else:
+                        parse_rule = True
+                        if nearest_float(value, "f64") != value:
+                            why = f"no double is exactly {lane}"
+                        else:
+                            why = f"{lane} is a double, but its digits need more than 63 bits"
+                        refused.append(f"{why} ('Cannot parse real'); {literal} is the {kind} nearest it")
+                    suggested_hex |= literal.lstrip("-").startswith("0x")
+                    written.append(literal)
+                elif stored != value:
+                    rounded.append(f"{lane} is stored as {literal}")
+                    written.append(literal)
+                else:
+                    written.append(lane)
+            else:
+                written.append(lane)
+        if integers:
+            among = " among float lanes" if instruction == "v128.const" else ""
+            subject = f"{integers[0]} is an integer" if len(integers) == 1 else f"{', '.join(integers)} are integers"
+            bits = ""
+            if bit_patterns:
+                # A hex integer may be meant as the float's bits, which the value reading misses.
+                wide = "i32" if kind == "f32" else "i64"
+                bits = f"; if {', '.join(bit_patterns)} {'is' if len(bit_patterns) == 1 else 'are'} meant as bits, {wide}.const then {kind}.reinterpret_{wide}"
+            refused.insert(0, f"{subject}{among}, which a float operand refuses ('invalid operand for instruction'){bits}")
+        rewritten = f"{instruction} {', '.join(written)}"
+        if refused:
+            rule = (". llvm-mc reads a float operand as a double and stops on any it cannot prove exact: a decimal passes only when it is "
+                    "a double whose significant digits fit in 63 bits (1.0, 0.5, 3.75, 1e3 do), a hex float when it is a double") if parse_rule else ""
+            self.add("error", "ASMWASM015", path, number,
+                     f"{instruction} {operands}: " + "; ".join(refused) + rule,
+                     rewritten + (" (a hex float is read exactly, and is the form llvm-mc prints)" if suggested_hex else ""))
+        elif rounded:
+            self.add("warning", "ASMWASM016", path, number,
+                     f"{instruction} {operands}: " + "; ".join(rounded) + ", the nearest f32: llvm-mc reads the double and rounds it "
+                     "to f32 without a word",
+                     f"{rewritten}, which says what is stored (f64.const when the extra precision matters)")
 
     def _missing_from_c_libraries(self, p: Project, name: str, oses: FrozenSet[str],
                                   lists: Dict[str, Set[str]], libc_extra: Set[str]) -> FrozenSet[str]:

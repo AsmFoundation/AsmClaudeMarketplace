@@ -129,6 +129,13 @@ ENDDATA message
   multivalue, mutable globals, non-trapping float-to-int, reference types and sign extension.
   `<AsmLlvmMcFlags>-mattr=+relaxed-simd</AsmLlvmMcFlags>` adds one. No `target_features` section
   is written, so a module needs a feature only where its code uses it.
+- **Float constants** (`f32.const`, `f64.const`, the lanes of `v128.const 0.5, 1.0, 1.5, 2.0`):
+  llvm-mc reads each as a double and refuses any it cannot prove exact. A short exact decimal
+  (`1.0`, `0.5`, `3.75`, `1e3`) or a hex float (`0x1.ae147ap-2`, which is 0.42 as an f32, the
+  form llvm-mc prints) assembles; `1`, `0.42`, `0.1`, `inf` and `06.5` do not. An f32 constant
+  with more precision than an f32 is rounded without a word (*verified* on 9,000 random
+  literals; the rule is in the footguns). `check_asmproj.py` prints the exact replacement
+  (**ASMWASM015**, **ASMWASM016**).
 
 ## PROTO on WebAssembly: the C# bindings
 
@@ -259,6 +266,10 @@ instance.exports.add_ints(40, 2);   // 42; memory is instance.exports.memory
 | `.int 1, 2`, `.byte`, `.short`, `.quad` | `.int32 1, 2`, `.word` | `.int8`-`.int64` take one value ("Expected EOL"); `.word` does not exist |
 | `BSS`, `RODATA` | `.bss`, `.rodata` | "unknown directive" |
 | `if i32` ... `else` ... `end_if` | an untyped `select` | llvm-mc 23.1.5's type checker: "type mismatch, expected [i32] but got [i32, i32]" at `ENDFUNCTION` |
+| `local.set` | a `local.tee` whose value nothing takes | the value left on the stack fails the block's type: "type mismatch, expected [] but got [v128]" at its `end_loop` or `end_block` |
+| `f32.const 1.0`, `0.5`, `1e3`, or a hex float: `f32.const 0x1.ae147ap-2` for 0.42 | `f32.const 1`, `0.42`, `0.1`, even the exact `0.4199999868869781494140625` | llvm-mc reads a float operand as a double and refuses what it cannot prove exact: an integer is "invalid operand for instruction"; a decimal must be a double whose significant digits fit in 63 bits (APFloat's first pass), else "Cannot parse real"; a hex float must be a double (**ASMWASM015** prints the replacement) |
+| `infinity`, `-infinity`, `nan`; `0.5`, `6.5` | `inf`; `00.5`, `06.5`, `0e0` | `inf` is no name the parser knows; a `0` that no point follows starts an octal integer for the lexer ("Expected ,, instead got: .5") |
+| the f32 it stores (`16777216.0`, `0x1.ae147ap-2`), or `f64.const` | an f32 constant with more precision than an f32: `16777217.0`, `0x1.ae147ae147ae1p-2`, `0x1p200` | llvm-mc rounds the double to the nearest f32 without a word: 16777216.0, 0x1.ae147ap-2, infinity (**ASMWASM016**) |
 | `TAILCALL` in code a .NET app links | `return_call` | .NET 10's wasm-opt validates without tail calls: "return_call* requires tail calls" |
 | `EXTERN_FUNCTION f, sig` before the call | a call to a function llvm-mc has not seen | "symbol f: missing .functype" |
 | `IMPORT_FUNCTION env, f, sig` | an undefined call | wasm-ld "undefined symbol: f" |
@@ -280,6 +291,8 @@ instance.exports.add_ints(40, 2);   // 42; memory is instance.exports.memory
 | ASM0055 (warning) | a *build* of a browser app with `RunAOTCompilation=true`: it interprets | time a `dotnet publish`; `NoWarn` it when the property is for publishes |
 | ASM0131 / ASM0132 / ASM0133 | PROTO for no exported function / wrong wasm type / RIDs disagree | see PROTO above |
 | `error: PROTO and the function macros go between functions` | PROTO or FUNCTION inside a body | move it above the `FUNCTION`; close with `ENDFUNCTION` |
+| `error: Cannot parse real: 0.42`, or `invalid operand for instruction` on `f32.const 1` | a float operand llvm-mc cannot prove exact, or an integer | a short exact decimal or a hex float (footguns above; **ASMWASM015** names it) |
+| `error: type mismatch, expected [] but got [v128]` at `end_loop` / `end_block` | a value left on the stack, often an unused `local.tee` | `local.set` |
 | `no perHostConfigs found` | `dotnet run` of a browser app without the runtimeconfig template | add it |
 | `MONO_WASM: Error loading symbol file dotnet.native.js.symbols: {}` (Node) | harmless | none |
 

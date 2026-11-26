@@ -20,17 +20,18 @@ Merged when AsmFoundation.Sdk's next release ships WebAssembly (the owner's choi
     of AsmSdk's `main` (a library summed in Node, a WASI command in wasmtime).
   - **`SKILL.md`:** a WebAssembly paragraph and recipe, three footgun rows, the reference in
     the table, WebAssembly words in the description.
-  - **`check_asmproj.py`: 64 checks** (19 new). `ASMPRJ019`-`023`: a wasm RID with 0.3.0
+  - **`check_asmproj.py`: 66 checks** (21 new). `ASMPRJ019`-`023`: a wasm RID with 0.3.0
     (info: a `main` build in a local feed is also 0.3.0), a browser program, a libc module, a
-    define with a value, a pattern in a module's exports. `ASMWASM001`-`014`, for each `.s`
+    define with a value, a pattern in a module's exports. `ASMWASM001`-`016`, for each `.s`
     source a wasm RID selects: an assembler constant, a data label without `ENDDATA`, a bare
     `.text`, `.int32` lists, `.bss`/`.rodata`, `PROTO` or a function macro inside a function,
     a function without `ENDFUNCTION`, an untyped `select`, `return_call` in code .NET links,
     `STRUCT`, a call to a function llvm-mc has not seen, unaligned WASI data, a `PROTO` that
-    lowers to another wasm signature, a `PROTO` for a `LOCAL_FUNCTION` or for nothing. The
-    source selection knows the wasm qualifiers (`ASMSRC014` for `x.wasm.asm`, `ASMSRC016`
-    for a wasm RID with no qualified source). Checked against AsmSdk's own wasm test
-    projects: every deliberately wrong one is flagged, every good one is clean.
+    lowers to another wasm signature, a `PROTO` for a `LOCAL_FUNCTION` or for nothing, a
+    float constant llvm-mc refuses or rounds to f32 unannounced. The source selection knows
+    the wasm qualifiers (`ASMSRC014` for `x.wasm.asm`, `ASMSRC016` for a wasm RID with no
+    qualified source). Checked against AsmSdk's own wasm test projects: every deliberately
+    wrong one is flagged, every good one is clean.
   - **`new_asmproj.py`:** `--rids browser-wasm;wasi-wasm` writes a `.wasm.s` library (with
     `PROTO` lines when every RID is wasm), `--kind exe --rids wasi-wasm` a WASI command; a
     browser program, a libc module, and a WASI program beside native RIDs are refused.
@@ -42,8 +43,9 @@ Merged when AsmFoundation.Sdk's next release ships WebAssembly (the owner's choi
     graders, a right answer and two wrong ones, and a build-check branch that runs the
     module in Node with no imports. The controls passed and failed as named, with a `main`
     build in the feed.
-  - **Tests:** 29 (wasm fixtures for every new check, the wasm scaffolds lint clean, the
-    inspector on a real WASI command and archive).
+  - **Tests:** 31 (wasm fixtures for every new check, the wasm scaffolds lint clean, the
+    inspector on a real WASI command and archive, the float rule on llvm-mc's measured
+    answers).
   - **Follows AsmSdk's round of 2026-11-25** (the owner's choices for the problems found on the
     way): ASM0054's fix by the app's shape, since SDK 11.0.100's `wasm-tools-net10` built and
     ran a `Microsoft.NET.Sdk.WebAssembly` app with asm code and stopped only the
@@ -51,6 +53,20 @@ Merged when AsmFoundation.Sdk's next release ships WebAssembly (the owner's choi
     app); the SDK's `WasmDebugLevel` default for browser builds (`0` in Release, `-1` in Debug);
     and `ASM0055`, the warning for a build that sets `RunAOTCompilation`. In
     `references/webassembly.md` and the `SKILL.md` footgun rows.
+  - **Follows AsmSdk's Wasm Demos (2026-11-26)**, whose hand-written kernels ran into llvm-mc's
+    float operands: `ASMWASM015` (error) for one it refuses and `ASMWASM016` (warning) for an
+    f32 one it rounds without a word, each with the instruction rewritten in literals it reads
+    exactly. The rule, measured on llvm-mc 23.1.5: a float operand is read as a double through
+    APFloat, which refuses what it cannot prove exact, so a decimal passes only when it is a
+    double whose significant digits fit in 63 bits (`2^-27` written out in full passes with
+    63, `7 * 2^-26` fails with 64, `0.4199999868869781494140625` with 82), a hex float when it
+    is a double; an integer is "invalid operand for instruction", `inf` an unknown name
+    (`infinity` is known), and a `0` that no point follows (`06.5`) starts an octal integer
+    for the lexer. On 9,000 random literals, as `f32.const` and `f64.const`, every acceptance
+    and every stored bit matched the rule, and each of the 7,388 suggested replacements
+    assembled to the nearest value. Also the `local.tee` leftover ("type mismatch, expected []
+    but got [v128]" at `end_loop`). In `references/webassembly.md` (a float-constants note,
+    footgun rows, diagnostics) and `SKILL.md` (a recipe line, a footgun row).
 
 ## 2026-11-21
 

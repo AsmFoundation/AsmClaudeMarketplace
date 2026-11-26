@@ -494,6 +494,9 @@ ENDFUNCTION add_ints
 - Never write an assembler constant (`.set`, `.equ`, `=`): llvm-mc's wasm writer crashes on
   them (`ASM0019`). End every data label with `ENDDATA name`, every function with `ENDFUNCTION
   name`, and put `PROTO` before its `FUNCTION`.
+- Write float constants as short exact decimals (`f32.const 1.0`, `0.5`) or hex floats
+  (`f32.const 0x1.ae147ap-2` is 0.42): llvm-mc refuses `f32.const 1`, `0.42` and `0.1`, and
+  `check_asmproj.py` prints the replacement.
 
 ## NASM rules that decide whether code links
 
@@ -615,6 +618,7 @@ Every row was reproduced with an AsmSdk release.
 | `bin/Debug/net10.0/win-x64/` holds both a RID's library and a whole `-r win-x64` build | `RidFolders` in a portable build uses the same folder names as `dotnet build -r` | `native/{rid}` when you also build for one RID |
 | `DllNotFoundException` under NativeAOT with a custom folder | no generated loader: a VB or F# project, below .NET 5, or `AsmGenerateNativeLibraryLoader=false` | keep the app folder for NativeAOT, or a resolver of your own |
 | `ASM0019 … absolute addressing not supported!` (wasm, after 0.3.0) | a `.set`/`.equ`/`=` constant in a `.wasm.s` source | the number itself, or a macro emitting `i32.const N` (`references/webassembly.md`) |
+| `Cannot parse real: 0.42`, or `invalid operand for instruction` on `f32.const 1` (wasm) | llvm-mc reads a float operand as a double and refuses an integer or a decimal it cannot prove exact (one whose significant digits need more than 63 bits, or no double holds) | a short exact decimal (`1.0`) or a hex float (`0x1.ae147ap-2`); `check_asmproj.py` (ASMWASM015) names it |
 | `ASM0054` (wasm, after 0.3.0) | a .NET WebAssembly app without .NET's native wasm build for its .NET version | `wasm-tools`, or `wasi-experimental` + WASI SDK 25.0, on the SDK of the app's .NET; on SDK 11, `wasm-tools-net10` serves a `Microsoft.NET.Sdk.WebAssembly` app only: a `Microsoft.NET.Sdk` + `browser-wasm` app (wasmconsole shape) or a WASI app needs a .NET 10 SDK |
 | `ASM0055` warning (wasm, after 0.3.0) | a build (not a publish) of a browser app with `RunAOTCompilation=true`: AOT happens only at publish | time a `dotnet publish`; `NoWarn` ASM0055 when the property is there for publishes |
 | asm 10-30x faster than C# in a browser, but not in Node | a .NET browser *Debug* build (or one with `WasmDebugLevel` -1, or any build on 0.3.0) runs with the debugger on in Chromium/Firefox: unoptimized interpreter, no jiterpreter | time a Release build (after 0.3.0 the SDK sets `WasmDebugLevel` 0 there) or a publish |
